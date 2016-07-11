@@ -226,6 +226,11 @@ namespace Tmpl8
                 m_Max.z = max(max(t.p0.z, max(t.p1.z, t.p2.z)), m_Max.z);
             }
         }
+		float CalculateVolume()
+		{
+			vec3 delta = m_Max - m_Min;
+			return delta.x * delta.x + delta.y *delta.y + delta.z*delta.z;
+		}
     };
 
     class BVHNode
@@ -248,7 +253,7 @@ namespace Tmpl8
         BVH(vector<Mesh*> meshes);
         vec4 Traverse(Ray& a_Ray);
 		vec4 TraverseDepth(Ray& a_Ray, int& depth);
-        const unsigned int primPerNode = 20;
+        const unsigned int primPerNode = 30;
         unsigned int nNodes;// amount of nodes
         unsigned int nTris;
         unsigned int poolPtr;
