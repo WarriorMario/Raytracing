@@ -256,20 +256,13 @@ void Raytracer::Render(Camera & camera)
         {
             float u = (float)x *invWidth;
             float distance = 1.0f;
-            vec3 planepos = p0 + u * (p1 - p0) + v * (p2 - p0);
-            Ray ray = Ray(camera.GetPosition(), normalize(planepos - camera.GetPosition()), INFINITY);
+			vec3 planepos = p0 + u * (p1 - p0) + v * (p2 - p0);
+			Ray ray = Ray(camera.GetPosition(), normalize(planepos - camera.GetPosition()), 100000000);
 
             reflPasses = 0;
             refrPasses = 0;
-            screen->GetBuffer()[x + line] = VecToPixel(GetColorFromSphere(ray, -1));
-
-            // Draw black sphere around light.
-            vec3 c = lights[0] - ray.O;
-            float t = dot(c, ray.D);
-            if (t < 0)continue;
-            vec3 q = c - t*ray.D;
-            float p2 = dot(q, q);
-            if (p2 < 1) screen->GetBuffer()[x + line] = 0;
+            //screen->GetBuffer()[x + line] = VecToPixel(GetColorFromSphere(ray, -1));
+			screen->GetBuffer()[x + line] = VecToPixel(GetColorFromSphere(ray, -1));
         }
     }
 }
@@ -296,8 +289,14 @@ void Tmpl8::Raytracer::RenderScanlines(Camera & camera)
 
         reflPasses = 0;
         refrPasses = 0;
-        frameBuffer[x + line] = VecToPixel(GetColorFromSphere(ray, -1));
-
+		int depth = 0;
+		//vec4  color = GetBVHDepth(ray,depth);
+		//frameBuffer[x + line] = VecToPixel(vec4(1, (float)depth / 20, 1.0f - (float)depth / 20, 0));
+		frameBuffer[x + line] = VecToPixel(GetColorFromSphere(ray, -1));
+		if (depth > 1)
+		{
+			int i = 0;
+		}
         // Draw black sphere around light.
         vec3 c = lights[0] - ray.O;
         float t = dot(c, ray.D);
@@ -393,6 +392,11 @@ vec4 Raytracer::GetColorFromSphere(Ray & ray, int exception)
     //vec4 finalColor = (AMBIENT + lightColor) * (colorR + colorP);
 
     return clamp(finalColor, 0.0f, 1.0f);
+}
+
+vec4 Tmpl8::Raytracer::GetBVHDepth(Ray & ray, int& depth)
+{
+	return bvh->TraverseDepth(ray, depth);
 }
 
 void Tmpl8::Raytracer::BuildBVH(vector<Mesh*> meshList)
@@ -590,7 +594,7 @@ vec4 Tmpl8::Triangle::GetColor()
     return vec4();
 }
 
-unsigned quick_sortX(Triangle* triangles, unsigned int*indexArray, unsigned int start, unsigned int count, float x)
+unsigned SortX(Triangle* triangles, unsigned int*indexArray, unsigned int start, unsigned int count, float x)
 {
     int i, j, t; 
     i = start;
@@ -619,7 +623,7 @@ unsigned quick_sortX(Triangle* triangles, unsigned int*indexArray, unsigned int 
     return k;
 }
 
-unsigned quick_sortY(Triangle* triangles, unsigned int*indexArray, unsigned int start, unsigned int count, float y)
+unsigned SortY(Triangle* triangles, unsigned int*indexArray, unsigned int start, unsigned int count, float y)
 {
     int i, j, t;
     i = start;
@@ -648,7 +652,7 @@ unsigned quick_sortY(Triangle* triangles, unsigned int*indexArray, unsigned int 
     return k;
 }
 
-unsigned quick_sortZ(Triangle* triangles, unsigned int*indexArray, unsigned int start, unsigned int count, float z)
+unsigned SortZ(Triangle* triangles, unsigned int*indexArray, unsigned int start, unsigned int count, float z)
 {
     int i, j, t;
     i = start;
@@ -709,16 +713,21 @@ Tmpl8::BVH::BVH(vector<Mesh*> meshes)
 }
 bool CheckBox(vec3& bmin, vec3& bmax, vec3 O, vec3 rD, float t)
 {
-    vec3 tMin = (bmin - O) * rD, tMax = (bmax - O) * rD;
+    vec3 tMin = (bmin - O) / rD, tMax = (bmax - O) / rD;
     vec3 t1 = min(tMin, tMax), t2 = max(tMin, tMax);
     float tNear = max(max(t1.x, t1.y), t1.z);
     float tFar = min(min(t2.x, t2.y), t2.z);
-    return ((tFar > tNear) && (tNear < t) && (tNear > 0));
+    return ((tFar > tNear) && (tNear < t) && (tFar > 0));
 }
 
 vec4 Tmpl8::BVH::Traverse(Ray & a_Ray)
 {
     return m_Nodes[0].Traverse(this, a_Ray);
+}
+
+vec4 Tmpl8::BVH::TraverseDepth(Ray & a_Ray, int& depth)
+{
+	return m_Nodes[0].TraverseDepth(this, a_Ray, depth);
 }
 
 void Tmpl8::BVHNode::Subdivide(BVH * bvh)
@@ -744,8 +753,9 @@ void Tmpl8::BVHNode::Subdivide(BVH * bvh)
     if (dx > dy && dx > dz)
     {
         // Split on x
-        float median = m_AABB.m_Min.x + dx * 0.5f;
-        unsigned int splitPoint = quick_sortX(bvh->m_Triangles, bvh->m_TriangleIdx, firstLeft, count, median);
+        float splitPos = m_AABB.m_Min.x + dx * 0.5f;
+        unsigned int splitPoint = SortX(bvh->m_Triangles, bvh->m_TriangleIdx, firstLeft, count, splitPos);
+
         leftNode->firstLeft = firstLeft;
         leftNode->count = splitPoint - firstLeft;
         rightNode->firstLeft = splitPoint;
@@ -754,8 +764,9 @@ void Tmpl8::BVHNode::Subdivide(BVH * bvh)
     else if (dy > dz)
     {
         // Split on y
-        float median = m_AABB.m_Min.y + dy * 0.5f;
-        unsigned int splitPoint = quick_sortY(bvh->m_Triangles, bvh->m_TriangleIdx, firstLeft, count, median);
+        float splitPos = m_AABB.m_Min.y + dy * 0.5f;
+        unsigned int splitPoint = SortY(bvh->m_Triangles, bvh->m_TriangleIdx, firstLeft, count, splitPos);
+
         leftNode->firstLeft = firstLeft;
         leftNode->count = splitPoint - firstLeft;
         rightNode->firstLeft = splitPoint;
@@ -765,8 +776,8 @@ void Tmpl8::BVHNode::Subdivide(BVH * bvh)
     else
     {
         // Split on z
-        float median = m_AABB.m_Min.z + dz * 0.5f;
-        unsigned int splitPoint = quick_sortZ(bvh->m_Triangles, bvh->m_TriangleIdx, firstLeft, count, median);
+        float splitPos = m_AABB.m_Min.z + dz * 0.5f;
+        unsigned int splitPoint = SortZ(bvh->m_Triangles, bvh->m_TriangleIdx, firstLeft, count, splitPos);
         leftNode->firstLeft = firstLeft;
         leftNode->count = splitPoint - firstLeft;
         rightNode->firstLeft = splitPoint;
@@ -781,39 +792,57 @@ void Tmpl8::BVHNode::Subdivide(BVH * bvh)
 
 vec4 Tmpl8::BVHNode::Traverse(BVH* bvh, Ray & a_Ray)
 {
-	// Maybe invert?? 
-    if (CheckBox(m_AABB.m_Min, m_AABB.m_Max, a_Ray.O, a_Ray.D, a_Ray.t)) 
+    if (!CheckBox(m_AABB.m_Min, m_AABB.m_Max, a_Ray.O, a_Ray.D, a_Ray.t)) 
         return BACKGROUND;
     if (count != 0)// Leaf
     {
-		return IntersectPrimitives(bvh,a_Ray);
+        return IntersectPrimitives(bvh,a_Ray);
     }
     vec4 color = bvh->m_Nodes[firstLeft].Traverse(bvh, a_Ray);
     vec4 color2 = bvh->m_Nodes[firstLeft + 1].Traverse(bvh, a_Ray);
-    if (color == BACKGROUND)
+    if (color != BACKGROUND)
     {
-        return color2;
+        return color;
     }
-    return color;
+    return color2;
+}
+
+vec4 Tmpl8::BVHNode::TraverseDepth(BVH * bvh, Ray & a_Ray, int & depth)
+{
+	depth++;
+	// Maybe invert?? 
+	if (!CheckBox(m_AABB.m_Min, m_AABB.m_Max, a_Ray.O, a_Ray.D, a_Ray.t))
+		return BACKGROUND;
+	if (count != 0)// Leaf
+	{
+		return IntersectPrimitives(bvh, a_Ray);
+	}
+	vec4 color = bvh->m_Nodes[firstLeft].TraverseDepth(bvh, a_Ray,depth);
+	vec4 color2 = bvh->m_Nodes[firstLeft + 1].TraverseDepth(bvh, a_Ray,depth);
+	if (color == BACKGROUND)
+	{
+		return color2;
+	}
+	return color;
 }
 
 vec4 Tmpl8::BVHNode::IntersectPrimitives(BVH * bvh, Ray & a_Ray)
 {
-	// Loop through the triangles
-	Triangle* test;
-	float u, v;
-	bool hit = false;
-	for (int i = firstLeft; i < count; ++i)
-	{
-		test = &bvh->m_Triangles[bvh->m_TriangleIdx[i]];
-		if (test->Intersect(a_Ray, u, v))
-		{
-			hit = true;
-		}
-	}
-	if (hit)
-	{
-		return vec4(1, 1, 1, 1);
-	}
-	return BACKGROUND;
+    // Loop through the triangles
+    Triangle* test;
+    float u, v;
+    bool hit = false;
+    for (int i = firstLeft; i < firstLeft+count; ++i)
+    {
+        test = &bvh->m_Triangles[bvh->m_TriangleIdx[i]];
+        if (test->Intersect(a_Ray, u, v))
+        {
+            hit = true;
+        }
+    }
+    if (hit)
+    {
+        return vec4(1, 1, 1, 1);
+    }
+    return BACKGROUND;
 }

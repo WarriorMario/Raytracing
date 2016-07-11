@@ -16,7 +16,7 @@ void Game::Init()
 {
     raytracer.Init(screen);
     rasterizer.Init(screen);
-    SGNode* t_potter = rasterizer.scene->Add("assets/pacman_close.obj");
+    SGNode* t_potter = rasterizer.scene->Add("assets/maze.obj");
     t_potter->SetPosition(vec3(0, 0, 0));
     for (int i = 0; i < rasterizer.scene->meshList.size(); ++i)
     {
@@ -75,7 +75,7 @@ void Game::Tick( float dt )
 	screen->Line( 2, 10, 50, 10, 0xff0000 );
 
     if (isRaytracer)
-        raytracer.RenderScanlines(camera);
+        raytracer.Render(camera);
     else
         rasterizer.Render(camera);
 }

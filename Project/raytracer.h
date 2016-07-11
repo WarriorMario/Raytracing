@@ -115,7 +115,6 @@ namespace Tmpl8
             p0 = mesh->pos[mesh->tri[idx * 3]];
             p1 = mesh->pos[mesh->tri[idx * 3 + 1]];
             p2 = mesh->pos[mesh->tri[idx * 3 + 2]];
-
             // centre point
             m_Pos = (p0 + p1 + p2) / 3.0f;
 
@@ -123,12 +122,15 @@ namespace Tmpl8
             uv1 = mesh->uv[mesh->tri[idx * 3 + 1]];
             uv2 = mesh->uv[mesh->tri[idx * 3 + 2]];
             m_Tex = mesh->material->texture;
+			this->mesh = mesh;
+			triID = idx;
         }
-
+		int triID;
         vec3 normal;
         vec3 p0, p1, p2;
         vec2 uv0, uv1, uv2;
-
+		float u, v;
+		Mesh* mesh;
         Texture* m_Tex;
         // Texture* n_Normals
     };
@@ -165,6 +167,7 @@ namespace Tmpl8
         void RenderScanlines(Camera& camera);
         vec4 CheckHit(Ray& ray, int exception, int recursion);
         vec4 GetColorFromSphere(Ray& ray, int exception);
+		vec4 GetBVHDepth(Ray& ray,int& depth);
         void BuildBVH(vector<Mesh*> meshList);
 
         // data members
@@ -234,6 +237,7 @@ namespace Tmpl8
 
         void Subdivide(BVH* bvh);
         vec4 Traverse(BVH* bvh, Ray& a_Ray);
+		vec4 TraverseDepth(BVH* bvh, Ray& a_Ray, int& depth);
         vec4 IntersectPrimitives(BVH* bvh, Ray& a_Ray);
 
     };
@@ -243,6 +247,7 @@ namespace Tmpl8
     public:
         BVH(vector<Mesh*> meshes);
         vec4 Traverse(Ray& a_Ray);
+		vec4 TraverseDepth(Ray& a_Ray, int& depth);
         const unsigned int primPerNode = 20;
         unsigned int nNodes;// amount of nodes
         unsigned int nTris;
