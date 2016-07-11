@@ -877,7 +877,7 @@ void Tmpl8::BVHNode::Subdivide(BVH * bvh)
 	{
 		// Split on x
 		float posStep = dx / 10.0f;
-		SortX(bvh->m_Triangles, bvh->m_TriangleIdx, firstLeft, firstLeft+count-1);
+		SortX(bvh->m_Triangles, bvh->m_TriangleIdx, firstLeft, firstLeft + count - 1);
 		// Find best splitpoint
 		// Offset now
 		posStep += posStep;
@@ -894,8 +894,8 @@ void Tmpl8::BVHNode::Subdivide(BVH * bvh)
 				{
 					// Calculate new AABB
 					int leftCount = (iTriangle - startIndex) - 1;
-					AABB left = AABB(bvh->m_Triangles, bvh->m_TriangleIdx, startIndex, leftCount );
-					int rightCount = (count - iTriangle)-1;
+					AABB left = AABB(bvh->m_Triangles, bvh->m_TriangleIdx, startIndex, leftCount);
+					int rightCount = (count - iTriangle) - 1;
 					AABB right = AABB(bvh->m_Triangles, bvh->m_TriangleIdx, iTriangle, rightCount);
 					float volume = left.CalculateVolume() + right.CalculateVolume();
 					if (volume < lastVolume)
@@ -941,7 +941,7 @@ void Tmpl8::BVHNode::Subdivide(BVH * bvh)
 					// Calculate new AABB
 					int leftCount = (iTriangle - startIndex) - 1;
 					AABB left = AABB(bvh->m_Triangles, bvh->m_TriangleIdx, startIndex, leftCount);
-					int rightCount = (count - iTriangle)-1;
+					int rightCount = (count - iTriangle) - 1;
 					AABB right = AABB(bvh->m_Triangles, bvh->m_TriangleIdx, iTriangle, rightCount);
 					float volume = left.CalculateVolume() + right.CalculateVolume();
 					if (volume < lastVolume)
@@ -987,7 +987,7 @@ void Tmpl8::BVHNode::Subdivide(BVH * bvh)
 					// Calculate new AABB
 					int leftCount = (iTriangle - startIndex) - 1;
 					AABB left = AABB(bvh->m_Triangles, bvh->m_TriangleIdx, startIndex, leftCount);
-					int rightCount = (count - iTriangle)-1;
+					int rightCount = (count - iTriangle) - 1;
 					AABB right = AABB(bvh->m_Triangles, bvh->m_TriangleIdx, iTriangle, rightCount);
 					float volume = left.CalculateVolume() + right.CalculateVolume();
 					if (volume < lastVolume)
@@ -1014,7 +1014,10 @@ void Tmpl8::BVHNode::Subdivide(BVH * bvh)
 	leftNode->count = splitIndex - firstLeft;
 	rightNode->firstLeft = splitIndex;
 	rightNode->count = count - (splitIndex - firstLeft);
-
+	if (leftNode->count == 0 || rightNode->count == 0)
+	{
+		return;
+	}
 	firstLeft = bvh->poolPtr - 1; // Save our left node index
 	count = 0; // We're not a leaf
 	leftNode->Subdivide(bvh);

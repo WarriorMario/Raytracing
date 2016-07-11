@@ -1,6 +1,5 @@
 *.sdf
 *.ncb
-*.lib
 *.pdb
 *.ipch
 *.opensdf
