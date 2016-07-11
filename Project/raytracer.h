@@ -253,7 +253,7 @@ namespace Tmpl8
         BVH(vector<Mesh*> meshes);
         vec4 Traverse(Ray& a_Ray);
 		vec4 TraverseDepth(Ray& a_Ray, int& depth);
-        const unsigned int primPerNode = 30;
+        const unsigned int primPerNode = 50;
         unsigned int nNodes;// amount of nodes
         unsigned int nTris;
         unsigned int poolPtr;

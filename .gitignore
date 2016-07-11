@@ -1,5 +1,4 @@
 *.sdf
-*.vcxproj
 *.ncb
 *.lib
 *.pdb
