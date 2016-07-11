@@ -1,8 +1,0 @@
-*.sdf
-*.ncb
-*.pdb
-*.ipch
-*.opensdf
-Debug
-Release
-x64
