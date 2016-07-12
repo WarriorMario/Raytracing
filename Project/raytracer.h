@@ -1,163 +1,201 @@
 #pragma once
 
+//*******************************************************************
+
+#define MAXOBJECTS 1024
+
+//*******************************************************************
+
 namespace Tmpl8
 {
 
-    #define MAXOBJECTS 1024
-    #define NUMLIGHTS 1
-
-    
+    //
+    // Primitive types
+    //
     class Object;
     class Sphere;
     class Plane;
+    class MeshCollider;
+    class Triangle;
+
+    //
+    // Ray tracing
+    //
     class Ray;
     class Raytracer;
-    class BVHNode;
-    class BVH;
-    class AABB;
-	struct BoxCheck
-	{
-		float tNear, tFar;
-		BOOL hit;
-	};
 
+    //
+    // BVH
+    //
+    struct BVHResult;
+    class  BVHNode;
+    class  BVH;
+    class  AABB;
+
+
+    typedef vec4 Color;
+    typedef struct
+    {
+        vec3  m_Pos;
+        Color m_Color;
+    } Light;
+
+    //*******************************************************************
+
+    //========================
+    //         OBJECT
+    //========================
     class Object
     {
 
     public:
-        Object(vec3& a_Pos, vec4& a_Diffuse, float a_Refl, float a_Refr)
+        Object(const vec3& a_Pos, const Color& a_Diffuse, float a_Refl, float a_Refr, float a_RIndex)
             : m_Pos(a_Pos)
             , m_Diffuse(a_Diffuse)
             , m_Refl(a_Refl)
             , m_Refr(a_Refr)
+            , m_RIndex(a_RIndex)
         {}
 
         virtual vec3 HitNormal(const vec3& a_Pos) { return vec3(0, 0, 0); }
         virtual BOOL Intersect(Ray& a_Ray)        { return FALSE;         }
         virtual BOOL IsOccluded(const Ray& a_Ray) { return FALSE;         }
-        virtual vec4 GetColor()                   { return m_Diffuse;     }
 
     public:
-        vec3  m_Pos;
-        vec4  m_Diffuse;
-        float m_Refl;
-        float m_Refr;
+        vec3  m_Pos;      // World-space position
+        Color m_Diffuse;  // Color and transparency
+        float m_Refl;     // Reflection
+        float m_Refr;     // Refraction
+        float m_RIndex;   // Refraction index
     };
 
+    //========================
+    //         SPHERE
+    //========================
     class Sphere : Object
     {
 
     public:
-        Sphere(vec3& a_Pos, vec4& a_Diffuse, float a_Refl, float a_Refr, float a_Radius)
-            : Object(a_Pos, a_Diffuse, a_Refl, a_Refr)
+        Sphere(vec3& a_Pos, vec4& a_Diffuse, float a_Refl, float a_Refr, float a_RIndex, float a_Radius)
+            : Object(a_Pos, a_Diffuse, a_Refl, a_Refr, a_RIndex)
             , m_Radius(a_Radius)
+            , m_SqRadius(a_Radius*a_Radius)
         {}
 
-        virtual vec3 HitNormal(const vec3& a_Pos);
-        virtual BOOL Intersect(Ray& a_Ray);
-        virtual BOOL IsOccluded(const Ray& a_Ray);
-        virtual vec4 GetColor();
+       virtual vec3 HitNormal(const vec3& a_Pos);
+       virtual BOOL Intersect(Ray& a_Ray);
+       virtual BOOL IsOccluded(const Ray& a_Ray);
 
     public:
         float m_Radius;
+        float m_SqRadius;
 
     };
+
+    //========================
+    //         PLANE
+    //========================
     class Plane : Object
     {
 
     public:
-        Plane(vec3& a_Normal, vec4& a_Diffuse, float a_Refl, float a_Refr, float a_Dist)
-            : Object(a_Normal, a_Diffuse, a_Refl, a_Refr)
+        Plane(const vec3& a_Normal, const vec4& a_Color, float a_Refl, float a_Refr, float a_RIndex, float a_Dist)
+            : Object(a_Normal, a_Color, a_Refl, a_Refr, a_RIndex)
             , m_Dist(a_Dist)
         {}
 
-        virtual vec3 HitNormal(const vec3& a_Pos);
-        virtual BOOL Intersect(Ray& a_Ray);
-        virtual BOOL IsOccluded(const Ray& a_Ray);
-        virtual vec4 GetColor();
+        vec3 HitNormal(const vec3& a_Pos);
+        BOOL Intersect(Ray& a_Ray);
+        BOOL IsOccluded(const Ray& a_Ray);
 
     public:
         float m_Dist;
 
     };
-    
+
+    //========================
+    //     MESHCOLLIDER
+    //========================
     class MeshCollider : public Object
     {
+    
     public:
-        MeshCollider(vec3& a_Normal, vec4& a_Diffuse, float a_Refl, float a_Refr, Mesh* a_Mesh)
-            : Object(a_Normal, a_Diffuse, a_Refl, a_Refr)
+        MeshCollider(const vec3& a_Pos, const vec4& a_Color, float a_Refl, float a_Refr, float a_RIndex, Mesh* a_Mesh)
+            : Object(a_Pos, a_Color, a_Refl, a_Refr, a_RIndex)
             , m_Mesh(a_Mesh)
         {}
 
-        virtual vec3 HitNormal(const vec3& a_Pos);
-        virtual BOOL Intersect(Ray& a_Ray);
-        virtual BOOL IsOccluded(const Ray& a_Ray);
-        virtual vec4 GetColor();
+        vec3 HitNormal(const vec3& a_Pos);
+        BOOL Intersect(Ray& a_Ray);
+        BOOL IsOccluded(const Ray& a_Ray);
 
-        Mesh* m_Mesh;
+    public:
+        Mesh*    m_Mesh;
         Texture* m_Tex;
-        int index;
+        int      index;
+    
     };
 
+    //========================
+    //        TRIANGLE
+    //========================
     class Triangle : public Object
     {
     public:
-        Triangle(vec3& a_Normal, vec4& a_Diffuse, float a_Refl, float a_Refr, Mesh* a_Mesh, int idx)
-            : Object(a_Normal, a_Diffuse, a_Refl, a_Refr)
+        Triangle(const vec3& a_Pos, const vec4& a_Color, float a_Refl, float a_Refr, float a_RIndex, Mesh* a_Mesh, int idx)
+            : Object(a_Pos, a_Color, a_Refl, a_Refr, a_RIndex)
         {
             // get all data
-            normal = a_Mesh->norm[idx];
-        }
+            normal = a_Mesh->N[idx];
+            p0 = a_Mesh->pos[a_Mesh->tri[idx * 3]];
+            p1 = a_Mesh->pos[a_Mesh->tri[idx * 3 + 1]];
+            p2 = a_Mesh->pos[a_Mesh->tri[idx * 3 + 2]];
 
-        virtual vec3 HitNormal(const vec3& a_Pos);
-        virtual BOOL Intersect(Ray& a_Ray);
-        BOOL Intersect(Ray& a_Ray, float& u, float&v);
-        virtual BOOL IsOccluded(const Ray& a_Ray);
-        virtual vec4 GetColor();
-        void Init(Mesh* mesh, int idx)
-        {
-            normal = mesh->N[idx];
-            p0 = mesh->pos[mesh->tri[idx * 3]];
-            p1 = mesh->pos[mesh->tri[idx * 3 + 1]];
-            p2 = mesh->pos[mesh->tri[idx * 3 + 2]];
             // centre point
             m_Pos = (p0 + p1 + p2) / 3.0f;
 
-            uv0 = mesh->uv[mesh->tri[idx * 3]];
-            uv1 = mesh->uv[mesh->tri[idx * 3 + 1]];
-            uv2 = mesh->uv[mesh->tri[idx * 3 + 2]];
-            m_Tex = mesh->material->texture;
-			this->mesh = mesh;
-			triID = idx;
+            uv0 = a_Mesh->uv[a_Mesh->tri[idx * 3]];
+            uv1 = a_Mesh->uv[a_Mesh->tri[idx * 3 + 1]];
+            uv2 = a_Mesh->uv[a_Mesh->tri[idx * 3 + 2]];
+            m_Tex = a_Mesh->material->texture;
         }
-		int triID;
+
+        vec3 HitNormal(const vec3& a_Pos);
+        BOOL Intersect(Ray& a_Ray);
+        BOOL Intersect(Ray& a_Ray, float& a_U, float& a_V);
+        BOOL IsOccluded(const Ray& a_Ray);
+
+        vec4 GetColor(float a_U, float a_V);
+
+
+    public:
         vec3 normal;
         vec3 p0, p1, p2;
         vec2 uv0, uv1, uv2;
-		float u, v;
-		Mesh* mesh;
+
         Texture* m_Tex;
         // Texture* n_Normals
+
     };
 
-    // -----------------------------------------------------------
-    // Raytracer struct
-    // generic ray
-    // -----------------------------------------------------------
+    //========================
+    //          RAY
+    //========================
     class Ray
     {
+
     public:
         // constructor / destructor
         Ray( vec3 origin, vec3 direction, float distance ) : O( origin ), D( direction ), t( distance ) {}
         // data members
         vec3 O, D;
         float t;
+
     };
 
-    // -----------------------------------------------------------
-    // Raytracer class
-    // to be build
-    // -----------------------------------------------------------
+    //========================
+    //       RAYTRACER
+    //========================
     class Raytracer
     {
     public:
@@ -165,35 +203,35 @@ namespace Tmpl8
         Raytracer() : scene( 0 ) {}
         ~Raytracer() { _aligned_free(frameBuffer); }
         // methods
-        void Init( Surface* screen );
-        void FindNearest( Ray& ray );
-        BOOL IsOccluded( Ray& ray );
-        void Render( Camera& camera );
-        void RenderScanlines(Camera& camera);
-        vec4 CheckHit(Ray& ray, int exception, int recursion);
-        vec4 GetColorFromSphere(Ray& ray, int exception);
-		vec4 GetBVHDepth(Ray& ray,int& depth);
-        void BuildBVH(vector<Mesh*> meshList);
+        void  Init( Surface* screen );
+        BOOL  IsOccluded( Ray& ray );
+        void  Render( Camera& camera );
+        void  RenderScanlines(Camera& camera);
+        Color GetColorFromSphere(Ray& a_Ray, int& a_ReflPass, int& a_RefrPass, float a_RIndex);
+		vec4  GetBVHDepth(Ray& ray,int& depth);
+        void  BuildBVH(vector<Mesh*> meshList);
 
         // data members
-        Scene* scene;	
+        Scene*   scene;	
         Surface* screen;
-        vec3 screenCenter;
-        Pixel* frameBuffer;
-        BVH* bvh;
-        int curLine;
+        vec3     screenCenter;
+        Pixel*   frameBuffer;
+        BVH*     bvh;
+        int      curLine;
         
         // Scene objects
-        vector<Object*> objects;
-        vec3 lights[NUMLIGHTS];
-        vec4 lightColors[NUMLIGHTS];
+        vector<Object*> m_Objects;
+        vector<Light*>  m_Lights;
     };
 
+    //========================
+    //         AABB
+    //========================
     class AABB
     {
     public:
-        vec3 m_Min = vec3(INFINITY);
-        vec3 m_Max = vec3(-INFINITY);
+        vec3 m_Min;
+        vec3 m_Max;
         AABB(const Triangle& t)
         {
             // Get the bounds
@@ -218,7 +256,6 @@ namespace Tmpl8
         }
         AABB(Triangle* triangles, unsigned int* indexArray, unsigned int start, unsigned int count)
         {
-			assert(count > 0);
             for (unsigned int i = start; i < start + count; ++i)
             {
                 unsigned int index = indexArray[i];
@@ -235,10 +272,22 @@ namespace Tmpl8
 		float CalculateVolume()
 		{
 			vec3 delta = m_Max - m_Min;
-			return delta.x * delta.y * delta.z;
+			return delta.x * delta.x + delta.y *delta.y + delta.z*delta.z;
 		}
     };
 
+    //========================
+    //        BVHRESULT
+    //========================
+    struct BVHResult
+    {
+        Triangle* m_Triangle;
+        float   m_U, m_V;
+    };
+
+    //========================
+    //         BVHNODE
+    //========================
     class BVHNode
     {
     public:
@@ -247,18 +296,21 @@ namespace Tmpl8
         int count;
 
         void Subdivide(BVH* bvh, int depth);
-        vec4 Traverse(BVH* bvh, Ray& a_Ray);
-		vec4 TraverseDepth(BVH* bvh, Ray& a_Ray, int& depth);
-        vec4 IntersectPrimitives(BVH* bvh, Ray& a_Ray);
+        BOOL Traverse(BVH* bvh, Ray& a_Ray, BVHResult& a_Result);
+		BOOL TraverseDepth(BVH* bvh, Ray& a_Ray, int& depth, BVHResult& a_Result);
+        BOOL IntersectPrimitives(BVH* bvh, Ray& a_Ray, BVHResult& a_Result);
 
     };
 
+    //========================
+    //           BVH
+    //========================
     class BVH
     {
     public:
         BVH(vector<Mesh*> meshes);
-        vec4 Traverse(Ray& a_Ray);
-		vec4 TraverseDepth(Ray& a_Ray, int& depth);
+        BOOL Traverse(Ray& a_Ray, BVHResult& a_Result);
+        BOOL TraverseDepth(Ray& a_Ray, int& depth, BVHResult& a_Result);
         const unsigned int primPerNode = 3;
         unsigned int nNodes;// amount of nodes
         unsigned int nTris;
@@ -266,6 +318,8 @@ namespace Tmpl8
         unsigned int* m_TriangleIdx;
         Triangle* m_Triangles;
         BVHNode* m_Nodes;
-		bool test;
+
+        int maxDepth;
     };
+
 }; // namespace Tmpl8

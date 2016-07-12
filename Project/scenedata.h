@@ -79,7 +79,9 @@ namespace Tmpl8
         void RotateYZX(float x, float y, float z) { RotateABC(y, z, x, 1, 2, 0); }
         void RotateZYX(float x, float y, float z) { RotateABC(z, y, x, 2, 1, 0); }
         void Add(SGNode* node) { child.push_back(node); }
+
         virtual int GetType() { return SG_TRANSFORM; }
+
     private:
         void RotateABC(float a, float b, float c, int a1, int a2, int a3);
         // data members
@@ -163,23 +165,5 @@ namespace Tmpl8
         static float* vleft, *vright;
         static float* zleft, *zright;
     };
-
-    //class Sphere : public SGNode
-    //{
-    //    // constructor / destructor
-    //    Sphere() : pos(0) {}
-    //    ~Sphere();
-    //    virtual int GetType() { return SG_MESH; }
-    //    // data members
-    //    vec3 pos;						// world-space position
-    //    int norm;						// sphere normal
-    //    Material* material;				// mesh material
-    //    vec3 bounds[2];					// mesh bounds
-    //    static Surface* screen;
-    //    static float* xleft, *xright;	// outline tables for rasterization
-    //    static float* uleft, *uright;
-    //    static float* vleft, *vright;
-    //    static float* zleft, *zright;
-    //};
 
 }

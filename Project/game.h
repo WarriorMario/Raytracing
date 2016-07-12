@@ -1,7 +1,7 @@
 #pragma once
 
-#define SCRWIDTH	 512
-#define SCRHEIGHT	 512
+#define SCRWIDTH	 1920
+#define SCRHEIGHT	 1080
 #define SCRASPECT (float)SCRHEIGHT/(float)SCRWIDTH
 
 namespace Tmpl8

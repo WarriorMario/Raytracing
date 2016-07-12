@@ -12,10 +12,12 @@
 
 #include "template.h"
 
+#define WINDOW_TITLE "Non-Plebbian Raytracer Supreme"
+
 namespace Tmpl8 { 
 void NotifyUser( char* s )
 {
-	HWND hApp = FindWindow( NULL, "Template" );
+	HWND hApp = FindWindow( NULL, WINDOW_TITLE);
 	MessageBox( hApp, s, "ERROR", MB_OK );
 	exit( 0 );
 }
@@ -96,7 +98,7 @@ int main( int argc, char **argv )
 	surface = new Surface( SCRWIDTH, SCRHEIGHT );
 	surface->Clear( 0 );
 	surface->InitCharset();
-	SDL_Window* window = SDL_CreateWindow( "Template", 100, 100, SCRWIDTH, SCRHEIGHT, SDL_WINDOW_SHOWN );
+	SDL_Window* window = SDL_CreateWindow( WINDOW_TITLE, 100, 100, SCRWIDTH, SCRHEIGHT, SDL_WINDOW_SHOWN );
 	SDL_Renderer* renderer = SDL_CreateRenderer( window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC );
 	SDL_Texture* frameBuffer = SDL_CreateTexture( renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, SCRWIDTH, SCRHEIGHT );
 	int exitapp = 0;
@@ -129,10 +131,11 @@ int main( int argc, char **argv )
 			firstframe = false;
 		}
 		// calculate frame time and pass it to game->Tick
-		StartTimer();
 		game->Tick( lastftime );
-		lastftime = GetDuration();
-		// event loop
+        lastftime = GetDuration();
+        StartTimer();
+		
+        // event loop
 		SDL_Event event;
 		while (SDL_PollEvent( &event )) 
 		{

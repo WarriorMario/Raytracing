@@ -1,15 +1,24 @@
 #include "template.h"
 
-//*************************************************
+//*************************************************************************
 
 #define BACKGROUND vec4(1.0f, 0.3f, 0.3f, 0.3f)
 #define AMBIENT vec4(1.0f,0.5f,0.5f,0.5f)
-#define TEST 1
-constexpr float kEpsilon = 1e-8;
-//*************************************************
+#define EPSILON 1e-4f
 
-using namespace Tmpl8; 
-int biggest = 0;
+#define MAXREFLPASSES 5
+#define MAXREFRPASSES 5
+#define FOV 1.8f
+
+#define MISS    0
+#define HIT     1
+#define INPRIM -1
+
+//*************************************************************************
+
+using namespace Tmpl8;
+
+//*************************************************************************
 
 // ============================================
 // Utility functions.
@@ -23,7 +32,6 @@ Pixel VecToPixel(vec4 color)
 	result += (unsigned int)(color.w * 255);
 	return result;
 }
-
 vec4 PixelToVec(Pixel color)
 {
 	vec4 result = vec4(0, 0, 0, 0);
@@ -33,7 +41,6 @@ vec4 PixelToVec(Pixel color)
 	result.w = ((float)((color & 0x000000ff))) / 255.0f;
 	return result;
 }
-
 vec4 ScaleColor(unsigned int a_Scale, vec4 color)
 {
 	Pixel c = VecToPixel(color);
@@ -41,7 +48,6 @@ vec4 ScaleColor(unsigned int a_Scale, vec4 color)
 	unsigned int g = (((c & GREENMASK) * a_Scale) >> 5) & GREENMASK;
 	return PixelToVec(rb + g);
 }
-
 Pixel RandColor()
 {
 	int r = (rand() % 255) << 16;
@@ -49,7 +55,6 @@ Pixel RandColor()
 	int b = rand() % 255;
 	return (0xff << 24) | r | g | b;
 }
-
 vec3 Reflect(vec3 I, vec3 N)
 {
 	/* Calculate reflection direction R
@@ -69,54 +74,80 @@ vec3 Reflect(vec3 I, vec3 N)
 	// Add once more to get R.
 	return (tan - projN);
 }
-
-vec3 Refract(vec3 N, vec3 I, float n1, float n2)
+bool RayTriangleIntersect(Ray & ray,
+    const vec3  &v0, const vec3 &v1, const vec3 &v2,
+    float &u, float &v)
 {
-	// Credits to crazy maths guy.
-	float ndoti, two_ndoti, ndoti2, a, b, b2, D2;
-	vec3 T;
-	ndoti = N.x*I.x + N.y*I.y + N.z*I.z;     // 3 mul, 2 add
-	ndoti2 = ndoti*ndoti;                    // 1 mul
-	if (ndoti >= 0.0)
-	{
-		b = n1 / n2;
-		b2 = b2 * b2;
-	}
-	else
-	{
-		b = n2 / n1;
-		b2 = b2 * b2;
-	}
-	D2 = 1.0f - b2*(1.0f - ndoti2);
+    vec3 v0v1 = v1 - v0;
+    vec3 v0v2 = v2 - v0;
+    vec3 pvec = cross(ray.D, v0v2);
+    float det = dot(v0v1, pvec);
 
-	if (D2 >= 0.0f) {
-		if (ndoti >= 0.0f)
-			a = b * ndoti - sqrtf(D2); // 2 mul, 3 add, 1 sqrt
-		else
-			a = b * ndoti + sqrtf(D2);
-		T.x = a*N.x - b*I.x;     // 6 mul, 3 add
-		T.y = a*N.y - b*I.y;     // ----totals---------
-		T.z = a*N.z - b*I.z;     // 12 mul, 8 add, 1 sqrt!
-	}
-	else {
-		// total internal reflection
-		// this usually doesn't happen, so I don't count it.
-		two_ndoti = ndoti + ndoti;         // +1 add
-		T.x = two_ndoti * N.x - I.x;      // +3 adds, +3 muls
-		T.y = two_ndoti * N.y - I.y;
-		T.z = two_ndoti * N.z - I.z;
-	}
-	return T;
+    // if the determinant is negative the triangle is backfacing
+    // if the determinant is close to 0, the ray misses the triangle
+    if (det < -EPSILON) return FALSE;
+    float invDet = 1 / det;
+
+    vec3 tvec = ray.O - v0;
+    u = dot(tvec, pvec) * invDet;
+    if (u < 0 || u > 1) return FALSE;
+
+    vec3 qvec = cross(tvec, v0v1);
+    v = dot(ray.D, qvec) * invDet;
+    if (v < 0 || u + v > 1) return FALSE;
+
+    float T = dot(v0v2, qvec) * invDet;
+
+    if (T < 0.0f)
+    {
+        return FALSE;
+    }
+    else if (T < ray.t)
+    {
+        ray.t = T;
+        return TRUE;
+    }
+    return FALSE;
+}
+bool RayTriangleHit(const Ray & ray, const vec3 &v0, const vec3 &v1, const vec3 &v2)
+{
+    vec3 v0v1 = v1 - v0;
+    vec3 v0v2 = v2 - v0;
+    vec3 pvec = cross(ray.D, v0v2);
+    float det = dot(v0v1, pvec);
+
+    // if the determinant is negative the triangle is backfacing
+    // if the determinant is close to 0, the ray misses the triangle
+    if (det < -EPSILON) return FALSE;
+    float invDet = 1 / det;
+
+    float u, v;
+    vec3 tvec = ray.O - v0;
+    u = dot(tvec, pvec) * invDet;
+    if (u < 0 || u > 1) return FALSE;
+
+    vec3 qvec = cross(tvec, v0v1);
+    v = dot(ray.D, qvec) * invDet;
+    if (v < 0 || u + v > 1) return FALSE;
+
+    float T = dot(v0v2, qvec) * invDet;
+
+    if (T < 0.0f)
+    {
+        return FALSE;
+    }
+    return TRUE;
 }
 
+//*************************************************************************
+
 // ============================================
-// Object occlusion test
+//                   Sphere
 // ============================================
 vec3 Sphere::HitNormal(const vec3& a_Pos)
 {
 	return (a_Pos - m_Pos) / m_Radius;
 }
-
 BOOL Sphere::Intersect(Ray& a_Ray)
 {
 	vec3 c = m_Pos - a_Ray.O;
@@ -134,7 +165,6 @@ BOOL Sphere::Intersect(Ray& a_Ray)
 	}
 	return FALSE;
 }
-
 BOOL Sphere::IsOccluded(const Ray& a_Ray)
 {
 	vec3 c = m_Pos - a_Ray.O;
@@ -147,16 +177,13 @@ BOOL Sphere::IsOccluded(const Ray& a_Ray)
 	return FALSE;
 }
 
-vec4 Tmpl8::Sphere::GetColor()
-{
-	return m_Diffuse;
-}
-
+// ============================================
+//                    Plane
+// ============================================
 vec3 Plane::HitNormal(const vec3& a_Pos)
 {
 	return m_Pos;
 }
-
 BOOL Plane::Intersect(Ray& a_Ray)
 {
 	// t =  (N.O+dist) / N.D
@@ -172,7 +199,6 @@ BOOL Plane::Intersect(Ray& a_Ray)
 	}
 	return FALSE;
 }
-
 BOOL Plane::IsOccluded(const Ray& a_Ray)
 {
 	// t =  (N.O+dist) / N.D
@@ -180,17 +206,146 @@ BOOL Plane::IsOccluded(const Ray& a_Ray)
 	float dnd = dot(m_Pos, a_Ray.D);
 	if (dnd == 0) return FALSE;
 	float t = -(dot(m_Pos, a_Ray.O) + m_Dist) / dnd;
-	if (t < 0.01) return FALSE;
+	if (t < 0.0f) return FALSE;
+    return TRUE;
 }
-
-vec4 Tmpl8::Plane::GetColor()
-{
-	return m_Diffuse;
-}
-
 
 // ============================================
-// Ray tracer manager
+//                Mesh collider
+// ============================================
+vec3 MeshCollider::HitNormal(const vec3 & a_Pos)
+{
+    return m_Mesh->N[index];
+}
+BOOL MeshCollider::IsOccluded(const Ray & a_Ray)
+{
+    bool hit = FALSE;
+    for (int i = 0; i < m_Mesh->tris; i++)
+    {
+        // Get the triangle
+        vec3 p0 = m_Mesh->pos[m_Mesh->tri[i * 3]];
+        vec3 p1 = m_Mesh->pos[m_Mesh->tri[i * 3 + 1]];
+        vec3 p2 = m_Mesh->pos[m_Mesh->tri[i * 3 + 2]];
+        if (RayTriangleHit(a_Ray, p0, p1, p2))
+        {
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+BOOL MeshCollider::Intersect(Ray& a_Ray)
+{
+    bool hit = FALSE;
+    for (int i = 0; i < m_Mesh->tris; i++)
+    {
+        // Get the triangle
+        vec3 p0 = m_Mesh->pos[m_Mesh->tri[i * 3]];
+        vec3 p1 = m_Mesh->pos[m_Mesh->tri[i * 3 + 1]];
+        vec3 p2 = m_Mesh->pos[m_Mesh->tri[i * 3 + 2]];
+        float u, v;
+        if (RayTriangleIntersect(a_Ray, p0, p1, p2, u, v))
+        {
+            vec2 uv0 = m_Mesh->uv[m_Mesh->tri[i * 3]];
+            vec2 uv1 = m_Mesh->uv[m_Mesh->tri[i * 3 + 1]];
+            vec2 uv2 = m_Mesh->uv[m_Mesh->tri[i * 3 + 2]];
+
+            vec2 uvPos = uv0 + u * (uv1 - uv0) + v * (uv2 - uv0);
+
+            Surface8 * surface = m_Mesh->material->texture->pixels;
+            vec3 NT = mat3(m_Mesh->localTransform) * m_Mesh->N[i];
+            Pixel* pal = surface->GetPalette(15);
+            unsigned char* src = m_Mesh->material->texture->pixels->GetBuffer();
+
+            const int tw = m_Mesh->material->texture->pixels->GetWidth();
+            const int th = m_Mesh->material->texture->pixels->GetHeight();
+
+            const int umask = (int)tw - 1, vmask = (int)th - 1;
+
+            int xBuffer = uvPos.x * tw;
+            int yBuffer = uvPos.y * th;
+            m_Diffuse = PixelToVec(pal[src[yBuffer * tw + xBuffer]]);
+            /////////////////////////////////////////
+            // wen wi fuond kolor, m_Diffuse = kolor,
+            /////////////////////////////////////////
+            index = i;
+            hit = TRUE;
+        }
+    }
+    return hit;
+}
+
+// ============================================
+//                  Triangle
+// ============================================
+vec3 Triangle::HitNormal(const vec3 & a_Pos)
+{
+    return normal;
+}
+BOOL Triangle::Intersect(Ray & a_Ray)
+{
+    return 0;
+}
+BOOL Triangle::Intersect(Ray & a_Ray, float & a_U, float & a_V)
+{
+    vec3 v0v1 = p1 - p0;
+    vec3 v0v2 = p2 - p0;
+    vec3 pvec = cross(a_Ray.D, v0v2);
+    float det = dot(v0v1, pvec);
+    float u, v;
+    // if the determinant is negative the triangle is backfacing
+    // if the determinant is close to 0, the ray misses the triangle
+    if (det < -EPSILON) return FALSE;
+    float invDet = 1 / det;
+
+    vec3 tvec = a_Ray.O - p0;
+    u = dot(tvec, pvec) * invDet;
+    if (u < 0 || u > 1) return FALSE;
+
+    vec3 qvec = cross(tvec, v0v1);
+    v = dot(a_Ray.D, qvec) * invDet;
+    if (v < 0 || u + v > 1) return FALSE;
+
+    float T = dot(v0v2, qvec) * invDet;
+
+    if (T < 0.0f)
+    {
+        return FALSE;
+    }
+    else if (T < a_Ray.t)
+    {
+        a_Ray.t = T;
+        a_U = u;
+        a_V = v;
+        return TRUE;
+    }
+    return FALSE;
+}
+BOOL Triangle::IsOccluded(const Ray & a_Ray)
+{
+    return 0;
+}
+
+Color Triangle::GetColor(float a_U, float a_V)
+{
+    vec2 uvPos = uv0 + a_U * (uv1 - uv0) + a_V * (uv2 - uv0);
+
+    Pixel* pal = m_Tex->pixels->GetPalette(15);
+    unsigned char* src = m_Tex->pixels->GetBuffer();
+
+    const int tw = m_Tex->pixels->GetWidth();
+    const int th = m_Tex->pixels->GetHeight();
+
+    const int umask = (int)tw - 1, vmask = (int)th - 1;
+
+    int xBuffer = uvPos.x * tw;
+    int yBuffer = uvPos.y * th;
+    return PixelToVec(pal[src[yBuffer * tw + xBuffer]]);
+}
+
+//*************************************************************************
+
+// ============================================
+//                  Raytracer
 // ============================================
 void Raytracer::Init(Surface * screen)
 {
@@ -199,54 +354,39 @@ void Raytracer::Init(Surface * screen)
 	memset(frameBuffer, 0, screen->GetHeight() * screen->GetWidth() * sizeof(Pixel));
 	this->curLine = 0;
 
-	for (int i = 0; i < NUMLIGHTS; i++)
-	{
-		lightColors[i] = vec4(1.0f, 1.0f, 1.0f, 1.0f);
-		lights[i] = vec3(0, 5, 0);
-	}
 
-	const int numSpheres = 2;
-	const int numPlanes = 1;
+    //---------------------
+    //     Add lights
+    //---------------------
+    Light* l   = new Light();
+    l->m_Pos   = vec3(0, 5, 0);
+    l->m_Color = Color(1, 1, 1, 1);
+    m_Lights.push_back(l);
 
-	for (int i = 0; i < numSpheres; i++)
-	{
-		Sphere* sphere = new Sphere(vec3(i, i, i), PixelToVec(0xff00ff00), 0.4f, 0.0f, (float)i / (float)numSpheres);
-		objects.push_back((Object*)sphere);
-	}
-	objects[1]->m_Refl = 0.0f;
-	objects[1]->m_Refr = 0.0f;
-	//for (int i = 0; i < numPlanes; i++)
-	//{
-	//    Plane* plane = new Plane(vec3(0, 1, 0), PixelToVec(0xff00ff00), 0.2f, 0.0f, true, false);
-	//    objects.push_back((Object*)plane);
-	//}
+    //---------------------
+    //     Add objects
+    //---------------------
+    Sphere* sphere;
+    sphere = new Sphere( vec3( 1, 0, 0)         ,
+                         PixelToVec(0xff00ff00) ,
+                         0.5f, 0.0f, 1.0f, 0.5f );
+    m_Objects.push_back((Object*)sphere);
+    sphere = new Sphere( vec3(-1, 0, 0)         ,
+                         PixelToVec(0xffffffff) ,
+                         0.0f, 0.5f, 1.5f, 0.5f );
+    m_Objects.push_back((Object*)sphere);
 }
-
-void Raytracer::FindNearest(Ray & ray)
-{
-}
-
 BOOL Raytracer::IsOccluded(Ray & ray)
 {
-	for (int i = 0; i < objects.size(); i++)
-	{
-		if (objects[i]->IsOccluded(ray)) return TRUE;
-	}
-
-	return FALSE;
+    BVHResult res;
+	return bvh->Traverse(ray, res);
 }
-
-int reflPasses = 0;
-int refrPasses = 0;
-float maxT = -200000.0f;
-float minT = 0.0f;
 void Raytracer::Render(Camera & camera)
 {
-	float fov = 1.8f;
-	//screenCenter = camera.GetForward() * fov;// +camera.GetPosition();
-	vec3 p0 = vec3(camera.transform * vec4(vec3(-1, SCRASPECT, -fov), 1));// -camera.GetPosition());
-	vec3 p1 = vec3(camera.transform * vec4(vec3(1, SCRASPECT, -fov), 1));// -camera.GetPosition());
-	vec3 p2 = vec3(camera.transform * vec4(vec3(-1, -SCRASPECT, -fov), 1));// -camera.GetPosition());
+
+	vec3 p0 = vec3( camera.transform * vec4( vec3( -1,  SCRASPECT, -FOV ), 1) );
+	vec3 p1 = vec3( camera.transform * vec4( vec3(  1,  SCRASPECT, -FOV ), 1) );
+	vec3 p2 = vec3( camera.transform * vec4( vec3( -1, -SCRASPECT, -FOV ), 1) );
 	float invHeight = 1.0f / (float)screen->GetHeight();
 	float invWidth = 1.0f / (float)screen->GetWidth();
 
@@ -259,26 +399,19 @@ void Raytracer::Render(Camera & camera)
 			float u = (float)x *invWidth;
 			float distance = 1.0f;
 			vec3 planepos = p0 + u * (p1 - p0) + v * (p2 - p0);
-			Ray ray = Ray(camera.GetPosition(), normalize(planepos - camera.GetPosition()), 100000000);
 
-			reflPasses = 0;
-			refrPasses = 0;
-			//screen->GetBuffer()[x + line] = VecToPixel(GetColorFromSphere(ray, -1));
-			int depth = 0;
-			vec4  color = GetBVHDepth(ray,depth);
-			screen->GetBuffer()[x + line] = VecToPixel(vec4(1, (float)depth / 60, 1.0f - (float)depth / 60, 0));
-			maxT = max((float)depth, maxT);
+            // Cast a ray into the scene.
+			Ray ray = Ray(camera.GetPosition(), normalize(planepos - camera.GetPosition()), 100000000);
+            int reflPasses = 0, refrPasses = 0;
+			screen->GetBuffer()[x + line] = VecToPixel(GetColorFromSphere(ray, reflPasses, refrPasses, 1.0f));
 		}
 	}
 }
-
-void Tmpl8::Raytracer::RenderScanlines(Camera & camera)
+void Raytracer::RenderScanlines(Camera & camera)
 {
-	float fov = 1.8f;
-	//screenCenter = camera.GetForward() * fov;// +camera.GetPosition();
-	vec3 p0 = vec3(camera.transform * vec4(vec3(-1, SCRASPECT, -fov), 1));// -camera.GetPosition());
-	vec3 p1 = vec3(camera.transform * vec4(vec3(1, SCRASPECT, -fov), 1));// -camera.GetPosition());
-	vec3 p2 = vec3(camera.transform * vec4(vec3(-1, -SCRASPECT, -fov), 1));// -camera.GetPosition());
+	vec3 p0 = vec3( camera.transform * vec4( vec3( -1,  SCRASPECT, -FOV ), 1) );
+	vec3 p1 = vec3( camera.transform * vec4( vec3(  1,  SCRASPECT, -FOV ), 1) );
+	vec3 p2 = vec3( camera.transform * vec4( vec3( -1, -SCRASPECT, -FOV ), 1) );
 	float invHeight = 1.0f / (float)screen->GetHeight();
 	float invWidth = 1.0f / (float)screen->GetWidth();
 
@@ -292,102 +425,88 @@ void Tmpl8::Raytracer::RenderScanlines(Camera & camera)
 		vec3 planepos = p0 + u * (p1 - p0) + v * (p2 - p0);
 		Ray ray = Ray(camera.GetPosition(), normalize(planepos - camera.GetPosition()), 100000000);
 
-		reflPasses = 0;
-		refrPasses = 0;
+        int reflPasses = 0, refrPasses = 0;
 		int depth = 0;
 		//vec4  color = GetBVHDepth(ray,depth);
 		//frameBuffer[x + line] = VecToPixel(vec4(1, (float)depth / 20, 1.0f - (float)depth / 20, 0));
-		frameBuffer[x + line] = VecToPixel(GetColorFromSphere(ray, -1));
+		frameBuffer[x + line] = VecToPixel(GetColorFromSphere(ray, reflPasses, refrPasses, 1.0f));
 		if (depth > 1)
 		{
 			int i = 0;
 		}
-		// Draw black sphere around light.
-		vec3 c = lights[0] - ray.O;
-		float t = dot(c, ray.D);
-		if (t < 0)continue;
-		vec3 q = c - t*ray.D;
-		float p2 = dot(q, q);
-		if (p2 < 1) screen->GetBuffer()[x + line] = 0;
 	}
 	memcpy(screen->GetBuffer(), frameBuffer, screen->GetHeight() * screen->GetWidth() * sizeof(Pixel));
 	if (curLine < screen->GetHeight() - 1)
 		curLine++;
 }
-
-vec4 Raytracer::GetColorFromSphere(Ray & ray, int exception)
+Color Raytracer::GetColorFromSphere(Ray& a_Ray, int& a_ReflPass, int& a_RefrPass, float a_RIndex)
 {
-	return bvh->Traverse(ray);
+    // If hit was null terminate ray and return background color.
+    BVHResult res;
+    BOOL isHit = bvh->Traverse(a_Ray, res);
+    if (!isHit) return BACKGROUND;
 
+    // Note: ATM all objects are triangles.
+    Triangle* tri = res.m_Triangle;
+    
+    vec3 hit = a_Ray.O + a_Ray.D * a_Ray.t;
+    vec3 normal = tri->normal;
+    vec4 finalColor = vec4(0.0f);
+    vec4 colorP = tri->GetColor(res.m_U, res.m_V); // + res.m_Object->GetColor();
 
-	int closestIndex = -1;
-	for (int i = 0; i < objects.size(); i++)
-	{
-		if (i == exception) continue;
+    //if (obj->isLight) return obj->GetColor();
+    // Light
+    float lightStrength = 1.0f - (tri->m_Refr + tri->m_Refl);
+    if (lightStrength > 0.0f)
+    {
+        finalColor += AMBIENT * colorP * lightStrength;
+        for (int i = 0; i < m_Lights.size(); ++i)
+        {
+            Light& light = *m_Lights[i];
 
-		if (objects[i]->Intersect(ray))
-		{
-			closestIndex = i;
-		}
-	}
-	if (closestIndex < 0)
-	{
-		return BACKGROUND;
-	}
+            Ray lightRay = Ray(hit, normalize(light.m_Pos - hit), INFINITY);
+            if (IsOccluded(lightRay) == false)
+            {
+                float d = dot(normal, lightRay.D);
+                if (d < 0.0f)
+                {
+                    d = 0.0f;
+                }
+                finalColor += d*light.m_Color * colorP * lightStrength;
+            }
+        }
+    }
+    // Reflect.
+    if (tri->m_Refl > 0.0f && a_ReflPass < MAXREFLPASSES)
+    {
+        a_ReflPass++;
+        Ray reflRay = Ray(hit, Reflect(a_Ray.D, normal), INFINITY);
+        vec4 reflColor = GetColorFromSphere(reflRay, a_ReflPass, a_RefrPass, a_RIndex);
+        finalColor += reflColor * colorP * tri->m_Refl;
+    }
+    // Refract.
+    if (tri->m_Refr > 0.0f && a_RefrPass < MAXREFRPASSES)
+    {
+        a_RefrPass++;
 
+        float rindex = tri->m_RIndex;
+        float n = a_RIndex / rindex;
+        float cosI = -dot(normal, a_Ray.D);
+        float cosT2 = 1.0f - n * n * (1.0f - cosI * cosI);
+        if (cosT2 > 0.0f)
+        {
+            // Calculate and cast reflection ray.
+            vec3 T = (n * a_Ray.D) + (n * cosI - sqrtf(cosT2)) * normal;
+            Ray refrRay = Ray(hit + T * EPSILON, T, INFINITY);
+            vec4 refrColor = GetColorFromSphere(refrRay, a_ReflPass, a_RefrPass, rindex);
+            // Apply Beer's law.
+            vec4 absorbance = colorP * 0.15f * -a_Ray.t;
+            vec4 transparency = vec4(expf(absorbance.r), expf(absorbance.g), expf(absorbance.b), 1.0f);
+            finalColor += refrColor * transparency;
+        }
+    }
 
-	vec3 hit = ray.O + ray.D * ray.t;
-	vec3 normal = objects[closestIndex]->HitNormal(hit);
-	vec4 finalColor = vec4(0.0f);
-	vec4 colorP = vec4(1, 1, 1, 1);// objects[closestIndex]->m_Diffuse;//*diffuse;
-
-	// Reflect.
-	if (objects[closestIndex]->m_Refl > 0.0f)
-	{
-		Ray reflRay = Ray(hit, Reflect(ray.D, normal), INFINITY);
-		vec4 reflColor;
-		if (reflPasses < 5)
-		{
-			reflPasses++;
-			reflColor = GetColorFromSphere(reflRay, closestIndex);
-		}
-		finalColor += reflColor * colorP * objects[closestIndex]->m_Refl;
-	}
-
-	if (objects[closestIndex]->m_Refr > 0.0f)
-	{
-		// Refract.
-		const float n1 = 1.0f, n2 = 0.5f;
-		Ray refrRay = Ray(hit, Refract(normal, ray.D, n1, n2), INFINITY);
-		vec4 refrColor;
-		if (refrPasses < 5)
-		{
-			refrPasses++;
-			refrColor = GetColorFromSphere(refrRay, -1);
-		}
-		finalColor += refrColor * colorP * objects[closestIndex]->m_Refr;
-	}
-
-	float lightStrength = 1.0f - (objects[closestIndex]->m_Refr + objects[closestIndex]->m_Refl);
-	if (lightStrength > 0.0f)
-	{
-		finalColor += AMBIENT * colorP * lightStrength;
-		for (int i = 0; i < NUMLIGHTS; ++i)
-		{
-			Ray lightRay = Ray(hit, normalize(lights[i] - hit), INFINITY);
-			if (IsOccluded(lightRay) == false)
-			{
-				float d = dot(normal, lightRay.D);
-				if (d < 0.0f)
-				{
-					d = 0.0f;
-				}
-				finalColor += d*lightColors[i] * colorP * lightStrength;
-			}
-		}
-	}
-
-	//float reflectance = objects[closestIndex]->m_Refl;
+	//float reflectance = m_Objects[closestIndex]->m_Refl;
 	//float refractance = 0.4f;
 	//float diffuse = 1.0f - reflectance;// -refractance;
 	//vec4 colorR = reflColor * reflectance;
@@ -398,207 +517,21 @@ vec4 Raytracer::GetColorFromSphere(Ray & ray, int exception)
 
 	return clamp(finalColor, 0.0f, 1.0f);
 }
-
-vec4 Tmpl8::Raytracer::GetBVHDepth(Ray & ray, int& depth)
+vec4 Raytracer::GetBVHDepth(Ray & ray, int& depth)
 {
-	return bvh->TraverseDepth(ray, depth);
+    return vec4(1, 1, 1, 1);
+	//return bvh->TraverseDepth(ray, depth);
 }
-
-void Tmpl8::Raytracer::BuildBVH(vector<Mesh*> meshList)
+void Raytracer::BuildBVH(vector<Mesh*> meshList)
 {
 	bvh = new BVH(meshList);
 }
 
-bool rayTriangleIntersect(Ray & ray,
-	const vec3  &v0, const vec3 &v1, const vec3 &v2,
-	float &u, float &v)
-{
-	vec3 v0v1 = v1 - v0;
-	vec3 v0v2 = v2 - v0;
-	vec3 pvec = cross(ray.D, v0v2);
-	float det = dot(v0v1, pvec);
+//*************************************************************************
 
-	// if the determinant is negative the triangle is backfacing
-	// if the determinant is close to 0, the ray misses the triangle
-	if (det < -kEpsilon) return FALSE;
-	float invDet = 1 / det;
-
-	vec3 tvec = ray.O - v0;
-	u = dot(tvec, pvec) * invDet;
-	if (u < 0 || u > 1) return FALSE;
-
-	vec3 qvec = cross(tvec, v0v1);
-	v = dot(ray.D, qvec) * invDet;
-	if (v < 0 || u + v > 1) return FALSE;
-
-	float T = dot(v0v2, qvec) * invDet;
-
-	if (T < 0.0f)
-	{
-		return FALSE;
-	}
-	else if (T < ray.t)
-	{
-		ray.t = T;
-		return TRUE;
-	}
-	return FALSE;
-}
-
-bool rayTriangleHit(const Ray & ray, const vec3 &v0, const vec3 &v1, const vec3 &v2)
-{
-	vec3 v0v1 = v1 - v0;
-	vec3 v0v2 = v2 - v0;
-	vec3 pvec = cross(ray.D, v0v2);
-	float det = dot(v0v1, pvec);
-
-	// if the determinant is negative the triangle is backfacing
-	// if the determinant is close to 0, the ray misses the triangle
-	if (det < -kEpsilon) return FALSE;
-	float invDet = 1 / det;
-
-	float u, v;
-	vec3 tvec = ray.O - v0;
-	u = dot(tvec, pvec) * invDet;
-	if (u < 0 || u > 1) return FALSE;
-
-	vec3 qvec = cross(tvec, v0v1);
-	v = dot(ray.D, qvec) * invDet;
-	if (v < 0 || u + v > 1) return FALSE;
-
-	float T = dot(v0v2, qvec) * invDet;
-
-	if (T < 0.0f)
-	{
-		return FALSE;
-	}
-	return TRUE;
-}
-
-vec3 Tmpl8::MeshCollider::HitNormal(const vec3 & a_Pos)
-{
-	return m_Mesh->N[index];
-}
-
-BOOL Tmpl8::MeshCollider::IsOccluded(const Ray & a_Ray)
-{
-	bool hit = FALSE;
-	for (int i = 0; i < m_Mesh->tris; i++)
-	{
-		// Get the triangle
-		vec3 p0 = m_Mesh->pos[m_Mesh->tri[i * 3]];
-		vec3 p1 = m_Mesh->pos[m_Mesh->tri[i * 3 + 1]];
-		vec3 p2 = m_Mesh->pos[m_Mesh->tri[i * 3 + 2]];
-		if (rayTriangleHit(a_Ray, p0, p1, p2))
-		{
-			return TRUE;
-		}
-	}
-	return FALSE;
-}
-
-vec4 Tmpl8::MeshCollider::GetColor()
-{
-	return vec4();
-}
-
-BOOL Tmpl8::MeshCollider::Intersect(Ray& a_Ray)
-{
-	bool hit = FALSE;
-	for (int i = 0; i < m_Mesh->tris; i++)
-	{
-		// Get the triangle
-		vec3 p0 = m_Mesh->pos[m_Mesh->tri[i * 3]];
-		vec3 p1 = m_Mesh->pos[m_Mesh->tri[i * 3 + 1]];
-		vec3 p2 = m_Mesh->pos[m_Mesh->tri[i * 3 + 2]];
-		float u, v;
-		if (rayTriangleIntersect(a_Ray, p0, p1, p2, u, v))
-		{
-			vec2 uv0 = m_Mesh->uv[m_Mesh->tri[i * 3]];
-			vec2 uv1 = m_Mesh->uv[m_Mesh->tri[i * 3 + 1]];
-			vec2 uv2 = m_Mesh->uv[m_Mesh->tri[i * 3 + 2]];
-
-			vec2 uvPos = uv0 + u * (uv1 - uv0) + v * (uv2 - uv0);
-
-			Surface8 * surface = m_Mesh->material->texture->pixels;
-			vec3 NT = mat3(m_Mesh->localTransform) * m_Mesh->N[i];
-			Pixel* pal = surface->GetPalette(15);
-			unsigned char* src = m_Mesh->material->texture->pixels->GetBuffer();
-
-			const int tw = m_Mesh->material->texture->pixels->GetWidth();
-			const int th = m_Mesh->material->texture->pixels->GetHeight();
-
-			const int umask = (int)tw - 1, vmask = (int)th - 1;
-
-			int xBuffer = uvPos.x * tw;
-			int yBuffer = uvPos.y * th;
-			m_Diffuse = PixelToVec(pal[src[yBuffer * tw + xBuffer]]);
-			/////////////////////////////////////////
-			// wen wi fuond kolor, m_Diffuse = kolor,
-			/////////////////////////////////////////
-			index = i;
-			hit = TRUE;
-		}
-	}
-	return hit;
-}
-
-vec3 Tmpl8::Triangle::HitNormal(const vec3 & a_Pos)
-{
-	return vec3();
-}
-
-BOOL Tmpl8::Triangle::Intersect(Ray & a_Ray)
-{
-	return 0;
-}
-// Return should be a struct containing u v etc
-BOOL Tmpl8::Triangle::Intersect(Ray & a_Ray, float & a_U, float & a_V)
-{
-	vec3 v0v1 = p1 - p0;
-	vec3 v0v2 = p2 - p0;
-	vec3 pvec = cross(a_Ray.D, v0v2);
-	float det = dot(v0v1, pvec);
-	float u, v;
-	// if the determinant is negative the triangle is backfacing
-	// if the determinant is close to 0, the ray misses the triangle
-	if (det < -kEpsilon) return FALSE;
-	float invDet = 1 / det;
-
-	vec3 tvec = a_Ray.O - p0;
-	u = dot(tvec, pvec) * invDet;
-	if (u < 0 || u > 1) return FALSE;
-
-	vec3 qvec = cross(tvec, v0v1);
-	v = dot(a_Ray.D, qvec) * invDet;
-	if (v < 0 || u + v > 1) return FALSE;
-
-	float T = dot(v0v2, qvec) * invDet;
-
-	if (T < 0.0f)
-	{
-		return FALSE;
-	}
-	else if (T < a_Ray.t)
-	{
-		a_Ray.t = T;
-		a_U = u;
-		a_V = v;
-		return TRUE;
-	}
-	return FALSE;
-}
-
-BOOL Tmpl8::Triangle::IsOccluded(const Ray & a_Ray)
-{
-	return 0;
-}
-
-vec4 Tmpl8::Triangle::GetColor()
-{
-	return vec4();
-}
-
+// ============================================
+//                BVH utilities
+// ============================================
 unsigned GroupX(Triangle* triangles, unsigned int*indexArray, unsigned int start, unsigned int count, float x)
 {
 	int i, j, t;
@@ -627,7 +560,6 @@ unsigned GroupX(Triangle* triangles, unsigned int*indexArray, unsigned int start
 	}
 	return k;
 }
-
 unsigned GroupY(Triangle* triangles, unsigned int*indexArray, unsigned int start, unsigned int count, float y)
 {
 	int i, j, t;
@@ -656,7 +588,6 @@ unsigned GroupY(Triangle* triangles, unsigned int*indexArray, unsigned int start
 	}
 	return k;
 }
-
 unsigned GroupZ(Triangle* triangles, unsigned int*indexArray, unsigned int start, unsigned int count, float z)
 {
 	int i, j, t;
@@ -685,7 +616,6 @@ unsigned GroupZ(Triangle* triangles, unsigned int*indexArray, unsigned int start
 	}
 	return k;
 }
-
 
 void SortX(Triangle* triangles, unsigned int*indexArray, unsigned int start, unsigned int end)
 {
@@ -725,7 +655,6 @@ void SortX(Triangle* triangles, unsigned int*indexArray, unsigned int start, uns
 		SortX(triangles, indexArray, L, end);
 	}
 }
-
 void SortY(Triangle* triangles, unsigned int*indexArray, unsigned int start, unsigned int end)
 {
 	if ((end - start) < 2)
@@ -764,7 +693,6 @@ void SortY(Triangle* triangles, unsigned int*indexArray, unsigned int start, uns
 		SortY(triangles, indexArray, L, end);
 	}
 }
-
 void SortZ(Triangle* triangles, unsigned int*indexArray, unsigned int start, unsigned int end)
 {
 	if ((end - start) < 2)
@@ -803,28 +731,53 @@ void SortZ(Triangle* triangles, unsigned int*indexArray, unsigned int start, uns
 		SortZ(triangles, indexArray, L, end);
 	}
 }
-float triangleCenterX[5000];
-float triangleSortedX[5000];
-Tmpl8::BVH::BVH(vector<Mesh*> meshes)
+
+bool CheckBox(vec3& bmin, vec3& bmax, vec3 O, vec3 rD, float t)
+{
+    vec3 tMin = (bmin - O) / rD, tMax = (bmax - O) / rD;
+    vec3 t1 = min(tMin, tMax), t2 = max(tMin, tMax);
+    float tNear = max(max(t1.x, t1.y), t1.z);
+    float tFar = min(min(t2.x, t2.y), t2.z);
+    return ((tFar > tNear) && (tNear < t) && (tFar > 0));
+}
+
+
+// ============================================
+//                     BVH
+// ============================================
+BVH::BVH(vector<Mesh*> meshes)
 {
 	nTris = 0;
 	for (int i = 0; i < meshes.size(); ++i)
 	{
 		nTris += meshes[i]->tris;
 	}
-
+    
 	m_Triangles = (Triangle*)malloc(nTris * sizeof(Triangle));
 	m_TriangleIdx = (unsigned int*)malloc(nTris * sizeof(int));
 	unsigned int trIdx = 0;
 	for (int i = 0; i < meshes.size(); ++i)
 	{
-		for (int j = 0; j < meshes[i]->tris; ++j)
-		{
-			m_Triangles[trIdx].Init(meshes[i], j);
-			m_TriangleIdx[trIdx] = trIdx;
-			triangleCenterX[trIdx] = m_Triangles[trIdx].m_Pos.x;
-			trIdx++;
-		}
+        if (i > 0)
+        {
+            // floor
+            for (int j = 0; j < meshes[i]->tris; ++j)
+            {
+                m_Triangles[trIdx] = Triangle(vec3(0), vec4(0), 0.4f, 0.0f, 1.0f, meshes[i], j);
+                m_TriangleIdx[trIdx] = trIdx;
+                trIdx++;
+            }
+        }
+        else
+        {
+            // mazes
+            for (int j = 0; j < meshes[i]->tris; ++j)
+            {
+                m_Triangles[trIdx] = Triangle(vec3(0), vec4(0), 0.6f, 0.3f, 1.5f, meshes[i], j);
+                m_TriangleIdx[trIdx] = trIdx;
+                trIdx++;
+            }
+        }
 	}
 
 	// check the size of BVHNode
@@ -834,383 +787,293 @@ Tmpl8::BVH::BVH(vector<Mesh*> meshes)
 
 	BVHNode* root = &m_Nodes[0];
 	poolPtr = 0;
+    maxDepth = 0;
 	root->firstLeft = 0;
 	root->count = nTris;
-	root->Subdivide(this,0); // construct the first node
-	int test = 0;
-
+	root->Subdivide(this, 0); // construct the first node
 }
-bool CheckBox(vec3& bmin, vec3& bmax, vec3 O, vec3 rD, float t)
+BOOL BVH::Traverse(Ray & a_Ray, BVHResult& a_Result)
 {
-	vec3 tMin = (bmin - O) / rD, tMax = (bmax - O) / rD;
-	vec3 t1 = min(tMin, tMax), t2 = max(tMin, tMax);
-	float tNear = max(max(t1.x, t1.y), t1.z);
-	float tFar = min(min(t2.x, t2.y), t2.z);
-	return ((tFar > tNear) && (tNear < t) && (tFar > 0));
+	return m_Nodes[0].Traverse(this, a_Ray, a_Result);
 }
-
-
-BoxCheck GetFromBox(AABB& box, vec3 O, vec3 rD, float t)
+BOOL BVH::TraverseDepth(Ray & a_Ray, int& depth, BVHResult& a_Result)
 {
-	BoxCheck ret;
-
-		vec3 tMin = (box.m_Min - O) / rD, tMax = (box.m_Max - O) / rD;
-		vec3 t1 = min(tMin, tMax), t2 = max(tMin, tMax);
-		ret.tNear = max(max(t1.x, t1.y), t1.z);
-		ret.tFar = min(min(t2.x, t2.y), t2.z);
-		ret.hit = ((ret.tFar > ret.tNear) && (ret.tNear < t) && (ret.tFar > 0));
-		return ret;
+    return m_Nodes[0].TraverseDepth(this, a_Ray, depth, a_Result);
 }
-vec4 Tmpl8::BVH::Traverse(Ray & a_Ray)
+void BVHNode::Subdivide(BVH * bvh, int depth)
 {
-	return m_Nodes[0].Traverse(this, a_Ray);
+    bvh->maxDepth = max(bvh->maxDepth, depth);
+    // Calculate bounds
+    m_AABB = AABB(bvh->m_Triangles, bvh->m_TriangleIdx, firstLeft, count);
+
+    // Quit if we do not have enough primitives
+    if ((count) < bvh->primPerNode)
+        return;
+    // Construct two nodes
+    bvh->poolPtr++;
+    BVHNode* leftNode = &bvh->m_Nodes[bvh->poolPtr];
+    bvh->poolPtr++;
+    BVHNode* rightNode = &bvh->m_Nodes[bvh->poolPtr];
+
+    // Partition
+    // Find longest axis
+    float dx, dy, dz;
+    dx = m_AABB.m_Max.x - m_AABB.m_Min.x;
+    dy = m_AABB.m_Max.y - m_AABB.m_Min.y;
+    dz = m_AABB.m_Max.z - m_AABB.m_Min.z;
+    int splitIndexX = 0;
+    int splitIndexY = 0;
+    int splitIndexZ = 0;
+    float initCost = m_AABB.CalculateVolume()*count;
+    float bestCost = m_AABB.CalculateVolume()*count;
+    int bestAxis = 0;
+    //if (dx > dy && dx > dz)
+    {
+        // Split on x
+        float posStep = dx / 10.0f;
+        SortX(bvh->m_Triangles, bvh->m_TriangleIdx, firstLeft, firstLeft + count - 1);
+        // Find best splitpoint
+        // Offset now
+        float splitPoint = posStep + m_AABB.m_Min.x;
+        int startIndex = firstLeft;
+        int bestSplitIndex = startIndex;
+        for (int i = 0; i < 8; ++i)
+        {
+            // Find point where we surpass the split point
+            for (int iTriangle = startIndex; iTriangle < startIndex + count; ++iTriangle)
+            {
+                Triangle* triangle = &bvh->m_Triangles[bvh->m_TriangleIdx[iTriangle]];
+                if (triangle->m_Pos.x > splitPoint)
+                {
+                    // Calculate new AABB
+                    float leftVolume, rightVolume;
+                    int leftCount = (iTriangle - startIndex);
+                    if (leftCount == 0)
+                    {
+                        leftVolume = 0;
+                    }
+                    else
+                    {
+                        AABB left = AABB(bvh->m_Triangles, bvh->m_TriangleIdx, startIndex, leftCount);
+                        leftVolume = left.CalculateVolume();
+                    }
+
+                    int rightCount = count - leftCount;
+                    if (rightCount == 0)
+                    {
+                        rightVolume = 0;
+                    }
+                    else
+                    {
+
+                        AABB right = AABB(bvh->m_Triangles, bvh->m_TriangleIdx, iTriangle, rightCount);
+                        rightVolume = right.CalculateVolume();
+                    }
+                    float cost = leftVolume * leftCount + rightVolume * rightCount;
+                    if (cost < bestCost)
+                    {
+                        bestCost = cost;
+                        // New start index
+                        bestSplitIndex = iTriangle;
+                        bestAxis = 0;
+                    }
+                    break;
+                }
+            }
+            splitPoint += posStep;
+        }
+        splitIndexX = bestSplitIndex;
+    }
+    //else if (dy > dz)
+    {
+        // Split on y
+        float posStep = dy / 10.0f;
+        SortY(bvh->m_Triangles, bvh->m_TriangleIdx, firstLeft, firstLeft + count - 1);
+        // Find best splitpoint
+        // Offset now
+        float splitPoint = posStep + m_AABB.m_Min.y;
+        int startIndex = firstLeft;
+        int bestSplitIndex = startIndex;
+        for (int i = 0; i < 8; ++i)
+        {
+            // Find point where we surpass the split point
+            for (int iTriangle = startIndex; iTriangle < startIndex + count; ++iTriangle)
+            {
+                Triangle* triangle = &bvh->m_Triangles[bvh->m_TriangleIdx[iTriangle]];
+                if (triangle->m_Pos.y > splitPoint)
+                {
+                    // Calculate new AABB
+                    float leftVolume, rightVolume;
+                    int leftCount = (iTriangle - startIndex);
+                    if (leftCount == 0)
+                    {
+                        leftVolume = 0;
+                    }
+                    else
+                    {
+                        AABB left = AABB(bvh->m_Triangles, bvh->m_TriangleIdx, startIndex, leftCount);
+                        leftVolume = left.CalculateVolume();
+                    }
+
+                    int rightCount = count - leftCount;
+                    if (rightCount == 0)
+                    {
+                        rightVolume = 0;
+                    }
+                    else
+                    {
+
+                        AABB right = AABB(bvh->m_Triangles, bvh->m_TriangleIdx, iTriangle, rightCount);
+                        rightVolume = right.CalculateVolume();
+                    }
+                    float cost = leftVolume * leftCount + rightVolume * rightCount;
+                    if (cost < bestCost)
+                    {
+                        bestCost = cost;
+                        // New start index
+                        bestSplitIndex = iTriangle;
+                        bestAxis = 1;
+                    }
+                    break;
+                }
+            }
+            splitPoint += posStep;
+        }
+        splitIndexY = bestSplitIndex;
+    }
+    //else
+    {
+        // Split on z
+        float posStep = dz / 10.0f;
+        SortZ(bvh->m_Triangles, bvh->m_TriangleIdx, firstLeft, firstLeft + count - 1);
+        // Find best splitpoint
+        // Offset now
+        float splitPoint = posStep + m_AABB.m_Min.z;
+        int startIndex = firstLeft;
+        int bestSplitIndex = startIndex;
+        for (int i = 0; i < 8; ++i)
+        {
+            // Find point where we surpass the split point
+            for (int iTriangle = startIndex; iTriangle < startIndex + count; ++iTriangle)
+            {
+                Triangle* triangle = &bvh->m_Triangles[bvh->m_TriangleIdx[iTriangle]];
+                if (triangle->m_Pos.z > splitPoint)
+                {
+                    // Calculate new AABB
+                    float leftVolume, rightVolume;
+                    int leftCount = (iTriangle - startIndex);
+                    if (leftCount == 0)
+                    {
+                        leftVolume = 0;
+                    }
+                    else
+                    {
+                        AABB left = AABB(bvh->m_Triangles, bvh->m_TriangleIdx, startIndex, leftCount);
+                        leftVolume = left.CalculateVolume();
+                    }
+
+                    int rightCount = count - leftCount;
+                    if (rightCount == 0)
+                    {
+                        rightVolume = 0;
+                    }
+                    else
+                    {
+
+                        AABB right = AABB(bvh->m_Triangles, bvh->m_TriangleIdx, iTriangle, rightCount);
+                        rightVolume = right.CalculateVolume();
+                    }
+                    float cost = leftVolume * leftCount + rightVolume * rightCount;
+                    if (cost < bestCost)
+                    {
+                        bestCost = cost;
+                        // New start index
+                        bestSplitIndex = iTriangle;
+                        bestAxis = 2;
+                    }
+                    break;
+                }
+            }
+            splitPoint += posStep;
+        }
+        splitIndexZ = bestSplitIndex;
+    }
+    int splitIndex;
+    if (bestAxis == 0)
+    {
+        SortX(bvh->m_Triangles, bvh->m_TriangleIdx, firstLeft, firstLeft + count - 1);
+        splitIndex = splitIndexX;
+    }
+    else if (bestAxis == 1)
+    {
+        SortY(bvh->m_Triangles, bvh->m_TriangleIdx, firstLeft, firstLeft + count - 1);
+        splitIndex = splitIndexY;
+    }
+    else
+    {
+        splitIndex = splitIndexZ;
+    }
+    // Z is already sorted
+    if (initCost == bestCost)// Don't split
+    {
+        return;
+    }
+    leftNode->firstLeft = firstLeft;
+    leftNode->count = splitIndex - firstLeft;
+    rightNode->firstLeft = splitIndex;
+    rightNode->count = count - (splitIndex - firstLeft);
+    assert(leftNode->count != 0 && rightNode->count != 0);/*
+    
+    if (leftNode->count == 0 || rightNode->count == 0)
+    {
+        return;
+    }*/
+
+    firstLeft = bvh->poolPtr - 1; // Save our left node index
+    count = 0; // We're not a leaf
+    leftNode->Subdivide(bvh, depth + 1);
+    rightNode->Subdivide(bvh, depth + 1);
 }
-
-vec4 Tmpl8::BVH::TraverseDepth(Ray & a_Ray, int& depth)
+BOOL BVHNode::Traverse(BVH* bvh, Ray & a_Ray, BVHResult& a_Result)
 {
-#if TEST
-	return m_Nodes[0].TraverseDepth(this, a_Ray, depth);
-#else
-	BoxCheck check = GetFromBox(m_Nodes[0].m_AABB, a_Ray.O, a_Ray.D, a_Ray.t);
-	return m_Nodes[0].TraverseDepth(this, a_Ray, depth,check);
-#endif
-}
-
-void Tmpl8::BVHNode::Subdivide(BVH * bvh,int depth)
-{
-	maxT = max(maxT, (float)depth);
-	// Calculate bounds
-	m_AABB = AABB(bvh->m_Triangles, bvh->m_TriangleIdx, firstLeft, count);
-
-	// Quit if we do not have enough primitives
-	if ((count) < bvh->primPerNode)
-		return;
-	// Construct two nodes
-	bvh->poolPtr++;
-	BVHNode* leftNode = &bvh->m_Nodes[bvh->poolPtr];
-	bvh->poolPtr++;
-	BVHNode* rightNode = &bvh->m_Nodes[bvh->poolPtr];
-
-	// Partition
-	// Find longest axis
-	float dx, dy, dz;
-	dx = m_AABB.m_Max.x - m_AABB.m_Min.x;
-	dy = m_AABB.m_Max.y - m_AABB.m_Min.y;
-	dz = m_AABB.m_Max.z - m_AABB.m_Min.z;
-	int splitIndexX = 0;
-	int splitIndexY = 0;
-	int splitIndexZ = 0;
-	float initCost = m_AABB.CalculateVolume()*count;
-	float bestCost = m_AABB.CalculateVolume()*count;
-	int bestAxis = 0;
-	//if (dx > dy && dx > dz)
-	{
-		// Split on x
-		float posStep = dx / 10.0f;
-		SortX(bvh->m_Triangles, bvh->m_TriangleIdx, firstLeft, firstLeft + count - 1);
-		// Find best splitpoint
-		// Offset now
-		float splitPoint = posStep + m_AABB.m_Min.x;
-		int startIndex = firstLeft;
-		int bestSplitIndex = startIndex;
-		for (int i = 0; i < 8; ++i)
-		{
-			// Find point where we surpass the split point
-			for (int iTriangle = startIndex; iTriangle < startIndex + count; ++iTriangle)
-			{
-				Triangle* triangle = &bvh->m_Triangles[bvh->m_TriangleIdx[iTriangle]];
-				if (triangle->m_Pos.x > splitPoint)
-				{
-					// Calculate new AABB
-					float leftVolume, rightVolume;
-					int leftCount = (iTriangle - startIndex);
-					if (leftCount == 0)
-					{
-						leftVolume = 0;
-					}
-					else
-					{
-						AABB left = AABB(bvh->m_Triangles, bvh->m_TriangleIdx, startIndex, leftCount);
-						leftVolume = left.CalculateVolume();
-					}
-
-					int rightCount = count - leftCount;
-					if (rightCount == 0)
-					{
-						rightVolume = 0;
-					}
-					else
-					{
-
-						AABB right = AABB(bvh->m_Triangles, bvh->m_TriangleIdx, iTriangle, rightCount);
-						rightVolume = right.CalculateVolume();
-					}
-					float cost = leftVolume * leftCount + rightVolume * rightCount;
-					if (cost < bestCost)
-					{
-						bestCost = cost;
-						// New start index
-						bestSplitIndex = iTriangle;
-						bestAxis = 0;
-					}
-					break;
-				}
-			}
-			splitPoint += posStep;
-		}
-		splitIndexX = bestSplitIndex;
-	}
-	//else if (dy > dz)
-	{
-		// Split on y
-		float posStep = dy / 10.0f;
-		SortY(bvh->m_Triangles, bvh->m_TriangleIdx, firstLeft, firstLeft + count - 1);
-		// Find best splitpoint
-		// Offset now
-		float splitPoint = posStep + m_AABB.m_Min.y;
-		int startIndex = firstLeft;
-		int bestSplitIndex = startIndex;
-		for (int i = 0; i < 8; ++i)
-		{
-			// Find point where we surpass the split point
-			for (int iTriangle = startIndex; iTriangle < startIndex + count; ++iTriangle)
-			{
-				Triangle* triangle = &bvh->m_Triangles[bvh->m_TriangleIdx[iTriangle]];
-				if (triangle->m_Pos.y > splitPoint)
-				{
-					// Calculate new AABB
-					float leftVolume, rightVolume;
-					int leftCount = (iTriangle - startIndex);
-					if (leftCount == 0)
-					{
-						leftVolume = 0;
-					}
-					else
-					{
-						AABB left = AABB(bvh->m_Triangles, bvh->m_TriangleIdx, startIndex, leftCount);
-						leftVolume = left.CalculateVolume();
-					}
-
-					int rightCount = count - leftCount;
-					if (rightCount == 0)
-					{
-						rightVolume = 0;
-					}
-					else
-					{
-
-						AABB right = AABB(bvh->m_Triangles, bvh->m_TriangleIdx, iTriangle, rightCount);
-						rightVolume = right.CalculateVolume();
-					}
-					float cost = leftVolume * leftCount + rightVolume * rightCount;
-					if (cost < bestCost)
-					{
-						bestCost = cost;
-						// New start index
-						bestSplitIndex = iTriangle;
-						bestAxis = 1;
-					}
-					break;
-				}
-			}
-			splitPoint += posStep;
-		}
-		splitIndexY = bestSplitIndex;
-	}
-	//else
-	{
-		// Split on z
-		float posStep = dz / 10.0f;
-		SortZ(bvh->m_Triangles, bvh->m_TriangleIdx, firstLeft, firstLeft + count - 1);
-		// Find best splitpoint
-		// Offset now
-		float splitPoint = posStep + m_AABB.m_Min.z;
-		int startIndex = firstLeft;
-		int bestSplitIndex = startIndex;
-		for (int i = 0; i < 8; ++i)
-		{
-			// Find point where we surpass the split point
-			for (int iTriangle = startIndex; iTriangle < startIndex + count; ++iTriangle)
-			{
-				Triangle* triangle = &bvh->m_Triangles[bvh->m_TriangleIdx[iTriangle]];
-				if (triangle->m_Pos.z > splitPoint)
-				{
-					// Calculate new AABB
-					float leftVolume, rightVolume;
-					int leftCount = (iTriangle - startIndex);
-					if (leftCount == 0)
-					{
-						leftVolume = 0;
-					}
-					else
-					{
-						AABB left = AABB(bvh->m_Triangles, bvh->m_TriangleIdx, startIndex, leftCount);
-						leftVolume = left.CalculateVolume();
-					}
-
-					int rightCount = count - leftCount;
-					if (rightCount == 0)
-					{
-						rightVolume = 0;
-					}
-					else
-					{
-
-						AABB right = AABB(bvh->m_Triangles, bvh->m_TriangleIdx, iTriangle, rightCount);
-						rightVolume = right.CalculateVolume();
-					}
-					float cost = leftVolume * leftCount + rightVolume * rightCount;
-					if (cost < bestCost)
-					{
-						bestCost = cost;
-						// New start index
-						bestSplitIndex = iTriangle;
-						bestAxis = 2;
-					}
-					break;
-				}
-			}
-			splitPoint += posStep;
-		}
-		splitIndexZ = bestSplitIndex;
-	}
-	int splitIndex;
-	if (bestAxis == 0)
-	{
-		SortX(bvh->m_Triangles, bvh->m_TriangleIdx, firstLeft, firstLeft + count - 1);
-		splitIndex = splitIndexX;
-	}
-	else if (bestAxis == 1)
-	{
-		SortY(bvh->m_Triangles, bvh->m_TriangleIdx, firstLeft, firstLeft + count - 1);
-		splitIndex = splitIndexY;
-	}
-	else
-	{
-		splitIndex = splitIndexZ;
-	}
-	// Z is already sorted
-	if (initCost == bestCost)// Don't split
-	{
-		if (leftNode->count > biggest)
-		{
-			biggest = leftNode->count;
-		}
-		if (rightNode->count > biggest)
-		{
-			biggest = rightNode->count;
-		}
-		return;
-	}
-	leftNode->firstLeft = firstLeft;
-	leftNode->count = splitIndex - firstLeft;
-	rightNode->firstLeft = splitIndex;
-	rightNode->count = count - (splitIndex - firstLeft);
-	if (leftNode->count == 0 || rightNode->count == 0)
-	{
-		if (leftNode->count > biggest)
-		{
-			biggest = leftNode->count;
-		}
-		if (rightNode->count > biggest)
-		{
-			biggest = rightNode->count;
-		}
-		return;
-	}
-	firstLeft = bvh->poolPtr - 1; // Save our left node index
-	count = 0; // We're not a leaf
-	leftNode->Subdivide(bvh, depth + 1);
-	if (leftNode->count > biggest)
-	{
-		biggest = leftNode->count;
-	}
-	rightNode->Subdivide(bvh, depth + 1); 
-	if (rightNode->count > biggest)
-	{
-		biggest = rightNode->count;
-	}
-}
-
-vec4 Tmpl8::BVHNode::Traverse(BVH* bvh, Ray & a_Ray)
-{
-	if (!CheckBox(m_AABB.m_Min, m_AABB.m_Max, a_Ray.O, a_Ray.D, a_Ray.t))
-		return BACKGROUND;
+    if (!CheckBox(m_AABB.m_Min, m_AABB.m_Max, a_Ray.O, a_Ray.D, a_Ray.t))
+        return FALSE;
 	if (count != 0)// Leaf
 	{
-		return IntersectPrimitives(bvh, a_Ray);
+        return IntersectPrimitives(bvh, a_Ray, a_Result);
 	}
-	vec4 color = bvh->m_Nodes[firstLeft].Traverse(bvh, a_Ray);
-	vec4 color2 = bvh->m_Nodes[firstLeft + 1].Traverse(bvh, a_Ray);
-	if (color != BACKGROUND)
-	{
-		return color;
-	}
-	return color2;
+
+    // small optimization -> check which one is closer first, because it has a higher chance that the ray'll hit an object closer to the ray origin.
+	return bvh->m_Nodes[firstLeft + 1].Traverse(bvh, a_Ray, a_Result) | bvh->m_Nodes[firstLeft].Traverse(bvh, a_Ray, a_Result);
 }
-vec4 Tmpl8::BVHNode::TraverseDepth(BVH * bvh, Ray & a_Ray, int & depth)
+BOOL BVHNode::TraverseDepth(BVH * bvh, Ray & a_Ray, int & depth, BVHResult& a_Result)
 {
-	if (bvh->test)
+	depth++;
+	// Maybe invert?? No raymi u drunk.
+    if (!CheckBox(m_AABB.m_Min, m_AABB.m_Max, a_Ray.O, a_Ray.D, a_Ray.t))
+        return FALSE;
+	if (count != 0)// Leaf
 	{
-		// Maybe invert?? 
-		if (!CheckBox(m_AABB.m_Min, m_AABB.m_Max, a_Ray.O, a_Ray.D, a_Ray.t))
-			return BACKGROUND;
-		depth++;
-		if (count != 0)// Leaf
-		{
-			return IntersectPrimitives(bvh, a_Ray);
-		}
-		vec4 color = bvh->m_Nodes[firstLeft].TraverseDepth(bvh, a_Ray, depth);
-		vec4 color2 = bvh->m_Nodes[firstLeft + 1].TraverseDepth(bvh, a_Ray, depth);
-
-		if (color == BACKGROUND)
-		{
-			return color2;
-		}
-		return color;
+        return IntersectPrimitives(bvh, a_Ray, a_Result);
 	}
-	else
-	{
-		// Maybe invert?? 
-		if (!CheckBox(m_AABB.m_Min, m_AABB.m_Max, a_Ray.O, a_Ray.D, a_Ray.t))
-			return BACKGROUND;
-		depth++;
-		if (count != 0)// Leaf
-		{
-			return IntersectPrimitives(bvh, a_Ray);
-		}
-		vec3 delta1 = bvh->m_Nodes[firstLeft].m_AABB.m_Max - bvh->m_Nodes[firstLeft+1].m_AABB.m_Min;
-		vec3 delta2 = bvh->m_Nodes[firstLeft+1].m_AABB.m_Max - bvh->m_Nodes[firstLeft].m_AABB.m_Min;
-
-
-		vec4 color = bvh->m_Nodes[firstLeft].TraverseDepth(bvh, a_Ray, depth);
-		vec4 color2 = bvh->m_Nodes[firstLeft + 1].TraverseDepth(bvh, a_Ray, depth);
-
-		if (color == BACKGROUND)
-		{
-			return color2;
-		}
-		return color;
-	}
+	return bvh->m_Nodes[firstLeft + 1].TraverseDepth(bvh, a_Ray, depth, a_Result) | bvh->m_Nodes[firstLeft].TraverseDepth(bvh, a_Ray, depth, a_Result);
 }
-
-vec4 Tmpl8::BVHNode::IntersectPrimitives(BVH * bvh, Ray & a_Ray)
+BOOL BVHNode::IntersectPrimitives(BVH * bvh, Ray & a_Ray, BVHResult& a_Result)
 {
 	// Loop through the triangles
-	Triangle* test;
+    Triangle* triangle;
 	float u, v;
-	bool hit = false;
 	for (int i = firstLeft; i < firstLeft + count; ++i)
 	{
-		test = &bvh->m_Triangles[bvh->m_TriangleIdx[i]];
-		if (test->Intersect(a_Ray, u, v))
-		{
-			hit = true;
-		}
+        triangle = &bvh->m_Triangles[bvh->m_TriangleIdx[i]];
+        if (triangle->Intersect(a_Ray, u, v))
+        {
+            a_Result.m_Triangle = triangle;
+            a_Result.m_U = u;
+            a_Result.m_V = v;
+            
+            return TRUE;
+        }
 	}
-	if (hit)
-	{
-		return vec4(1, 1, 1, 1);
-	}
-	return BACKGROUND;
+	return FALSE;
 }
