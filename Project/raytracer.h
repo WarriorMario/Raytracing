@@ -15,6 +15,11 @@ namespace Tmpl8
     class BVHNode;
     class BVH;
     class AABB;
+	struct BoxCheck
+	{
+		float tNear, tFar;
+		BOOL hit;
+	};
 
     class Object
     {
@@ -187,8 +192,8 @@ namespace Tmpl8
     class AABB
     {
     public:
-        vec3 m_Min;
-        vec3 m_Max;
+        vec3 m_Min = vec3(INFINITY);
+        vec3 m_Max = vec3(-INFINITY);
         AABB(const Triangle& t)
         {
             // Get the bounds
@@ -213,6 +218,7 @@ namespace Tmpl8
         }
         AABB(Triangle* triangles, unsigned int* indexArray, unsigned int start, unsigned int count)
         {
+			assert(count > 0);
             for (unsigned int i = start; i < start + count; ++i)
             {
                 unsigned int index = indexArray[i];
@@ -229,7 +235,7 @@ namespace Tmpl8
 		float CalculateVolume()
 		{
 			vec3 delta = m_Max - m_Min;
-			return delta.x * delta.x + delta.y *delta.y + delta.z*delta.z;
+			return delta.x * delta.y * delta.z;
 		}
     };
 
@@ -240,7 +246,7 @@ namespace Tmpl8
         int firstLeft;
         int count;
 
-        void Subdivide(BVH* bvh);
+        void Subdivide(BVH* bvh, int depth);
         vec4 Traverse(BVH* bvh, Ray& a_Ray);
 		vec4 TraverseDepth(BVH* bvh, Ray& a_Ray, int& depth);
         vec4 IntersectPrimitives(BVH* bvh, Ray& a_Ray);
@@ -253,12 +259,13 @@ namespace Tmpl8
         BVH(vector<Mesh*> meshes);
         vec4 Traverse(Ray& a_Ray);
 		vec4 TraverseDepth(Ray& a_Ray, int& depth);
-        const unsigned int primPerNode = 50;
+        const unsigned int primPerNode = 3;
         unsigned int nNodes;// amount of nodes
         unsigned int nTris;
         unsigned int poolPtr;
         unsigned int* m_TriangleIdx;
         Triangle* m_Triangles;
         BVHNode* m_Nodes;
+		bool test;
     };
 }; // namespace Tmpl8

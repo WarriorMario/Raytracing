@@ -1,0 +1,11 @@
+*.sdf
+*.vcxproj
+*.ncb
+*.pdb
+*.ipch
+*.opensdf
+Debug
+Release
+x64
+*.psess
+*.vspx

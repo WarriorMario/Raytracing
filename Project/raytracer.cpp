@@ -4,10 +4,12 @@
 
 #define BACKGROUND vec4(1.0f, 0.3f, 0.3f, 0.3f)
 #define AMBIENT vec4(1.0f,0.5f,0.5f,0.5f)
+#define TEST 1
 constexpr float kEpsilon = 1e-8;
 //*************************************************
 
-using namespace Tmpl8;
+using namespace Tmpl8; 
+int biggest = 0;
 
 // ============================================
 // Utility functions.
@@ -262,7 +264,10 @@ void Raytracer::Render(Camera & camera)
 			reflPasses = 0;
 			refrPasses = 0;
 			//screen->GetBuffer()[x + line] = VecToPixel(GetColorFromSphere(ray, -1));
-			screen->GetBuffer()[x + line] = VecToPixel(GetColorFromSphere(ray, -1));
+			int depth = 0;
+			vec4  color = GetBVHDepth(ray,depth);
+			screen->GetBuffer()[x + line] = VecToPixel(vec4(1, (float)depth / 60, 1.0f - (float)depth / 60, 0));
+			maxT = max((float)depth, maxT);
 		}
 	}
 }
@@ -831,7 +836,9 @@ Tmpl8::BVH::BVH(vector<Mesh*> meshes)
 	poolPtr = 0;
 	root->firstLeft = 0;
 	root->count = nTris;
-	root->Subdivide(this); // construct the first node
+	root->Subdivide(this,0); // construct the first node
+	int test = 0;
+
 }
 bool CheckBox(vec3& bmin, vec3& bmax, vec3 O, vec3 rD, float t)
 {
@@ -842,6 +849,18 @@ bool CheckBox(vec3& bmin, vec3& bmax, vec3 O, vec3 rD, float t)
 	return ((tFar > tNear) && (tNear < t) && (tFar > 0));
 }
 
+
+BoxCheck GetFromBox(AABB& box, vec3 O, vec3 rD, float t)
+{
+	BoxCheck ret;
+
+		vec3 tMin = (box.m_Min - O) / rD, tMax = (box.m_Max - O) / rD;
+		vec3 t1 = min(tMin, tMax), t2 = max(tMin, tMax);
+		ret.tNear = max(max(t1.x, t1.y), t1.z);
+		ret.tFar = min(min(t2.x, t2.y), t2.z);
+		ret.hit = ((ret.tFar > ret.tNear) && (ret.tNear < t) && (ret.tFar > 0));
+		return ret;
+}
 vec4 Tmpl8::BVH::Traverse(Ray & a_Ray)
 {
 	return m_Nodes[0].Traverse(this, a_Ray);
@@ -849,11 +868,17 @@ vec4 Tmpl8::BVH::Traverse(Ray & a_Ray)
 
 vec4 Tmpl8::BVH::TraverseDepth(Ray & a_Ray, int& depth)
 {
+#if TEST
 	return m_Nodes[0].TraverseDepth(this, a_Ray, depth);
+#else
+	BoxCheck check = GetFromBox(m_Nodes[0].m_AABB, a_Ray.O, a_Ray.D, a_Ray.t);
+	return m_Nodes[0].TraverseDepth(this, a_Ray, depth,check);
+#endif
 }
 
-void Tmpl8::BVHNode::Subdivide(BVH * bvh)
+void Tmpl8::BVHNode::Subdivide(BVH * bvh,int depth)
 {
+	maxT = max(maxT, (float)depth);
 	// Calculate bounds
 	m_AABB = AABB(bvh->m_Triangles, bvh->m_TriangleIdx, firstLeft, count);
 
@@ -872,143 +897,210 @@ void Tmpl8::BVHNode::Subdivide(BVH * bvh)
 	dx = m_AABB.m_Max.x - m_AABB.m_Min.x;
 	dy = m_AABB.m_Max.y - m_AABB.m_Min.y;
 	dz = m_AABB.m_Max.z - m_AABB.m_Min.z;
-	int splitIndex = 0;
-	if (dx > dy && dx > dz)
+	int splitIndexX = 0;
+	int splitIndexY = 0;
+	int splitIndexZ = 0;
+	float initCost = m_AABB.CalculateVolume()*count;
+	float bestCost = m_AABB.CalculateVolume()*count;
+	int bestAxis = 0;
+	//if (dx > dy && dx > dz)
 	{
 		// Split on x
 		float posStep = dx / 10.0f;
 		SortX(bvh->m_Triangles, bvh->m_TriangleIdx, firstLeft, firstLeft + count - 1);
 		// Find best splitpoint
 		// Offset now
-		posStep += posStep;
 		float splitPoint = posStep + m_AABB.m_Min.x;
 		int startIndex = firstLeft;
-		float lastVolume = 10000;
+		int bestSplitIndex = startIndex;
 		for (int i = 0; i < 8; ++i)
 		{
 			// Find point where we surpass the split point
-			for (int iTriangle = startIndex; iTriangle < count; ++iTriangle)
+			for (int iTriangle = startIndex; iTriangle < startIndex + count; ++iTriangle)
 			{
 				Triangle* triangle = &bvh->m_Triangles[bvh->m_TriangleIdx[iTriangle]];
 				if (triangle->m_Pos.x > splitPoint)
 				{
 					// Calculate new AABB
-					int leftCount = (iTriangle - startIndex) - 1;
-					AABB left = AABB(bvh->m_Triangles, bvh->m_TriangleIdx, startIndex, leftCount);
-					int rightCount = (count - iTriangle) - 1;
-					AABB right = AABB(bvh->m_Triangles, bvh->m_TriangleIdx, iTriangle, rightCount);
-					float volume = left.CalculateVolume() + right.CalculateVolume();
-					if (volume < lastVolume)
+					float leftVolume, rightVolume;
+					int leftCount = (iTriangle - startIndex);
+					if (leftCount == 0)
 					{
-						lastVolume = volume;
+						leftVolume = 0;
 					}
 					else
 					{
-						i = 8;// Quit outer loop
-						// Go 2 steps back as we will set one step further
-						splitPoint -= posStep;
-						splitPoint -= posStep;
-						splitIndex = iTriangle - 1;
-						break;
+						AABB left = AABB(bvh->m_Triangles, bvh->m_TriangleIdx, startIndex, leftCount);
+						leftVolume = left.CalculateVolume();
 					}
-					// New start index
-					startIndex = iTriangle;
+
+					int rightCount = count - leftCount;
+					if (rightCount == 0)
+					{
+						rightVolume = 0;
+					}
+					else
+					{
+
+						AABB right = AABB(bvh->m_Triangles, bvh->m_TriangleIdx, iTriangle, rightCount);
+						rightVolume = right.CalculateVolume();
+					}
+					float cost = leftVolume * leftCount + rightVolume * rightCount;
+					if (cost < bestCost)
+					{
+						bestCost = cost;
+						// New start index
+						bestSplitIndex = iTriangle;
+						bestAxis = 0;
+					}
+					break;
 				}
 			}
 			splitPoint += posStep;
 		}
-
+		splitIndexX = bestSplitIndex;
 	}
-	else if (dy > dz)
+	//else if (dy > dz)
 	{
 		// Split on y
 		float posStep = dy / 10.0f;
 		SortY(bvh->m_Triangles, bvh->m_TriangleIdx, firstLeft, firstLeft + count - 1);
 		// Find best splitpoint
 		// Offset now
-		posStep += posStep;
 		float splitPoint = posStep + m_AABB.m_Min.y;
 		int startIndex = firstLeft;
-		float lastVolume = 10000;
+		int bestSplitIndex = startIndex;
 		for (int i = 0; i < 8; ++i)
 		{
 			// Find point where we surpass the split point
-			for (int iTriangle = startIndex; iTriangle < count; ++iTriangle)
+			for (int iTriangle = startIndex; iTriangle < startIndex + count; ++iTriangle)
 			{
 				Triangle* triangle = &bvh->m_Triangles[bvh->m_TriangleIdx[iTriangle]];
 				if (triangle->m_Pos.y > splitPoint)
 				{
 					// Calculate new AABB
-					int leftCount = (iTriangle - startIndex) - 1;
-					AABB left = AABB(bvh->m_Triangles, bvh->m_TriangleIdx, startIndex, leftCount);
-					int rightCount = (count - iTriangle) - 1;
-					AABB right = AABB(bvh->m_Triangles, bvh->m_TriangleIdx, iTriangle, rightCount);
-					float volume = left.CalculateVolume() + right.CalculateVolume();
-					if (volume < lastVolume)
+					float leftVolume, rightVolume;
+					int leftCount = (iTriangle - startIndex);
+					if (leftCount == 0)
 					{
-						lastVolume = volume;
+						leftVolume = 0;
 					}
 					else
 					{
-						i = 8;// Quit outer loop
-							  // Go 2 steps back as we will set one step further
-						splitPoint -= posStep;
-						splitPoint -= posStep;
-						splitIndex = iTriangle - 1;
-						break;
+						AABB left = AABB(bvh->m_Triangles, bvh->m_TriangleIdx, startIndex, leftCount);
+						leftVolume = left.CalculateVolume();
 					}
-					// New start index
-					startIndex = iTriangle;
+
+					int rightCount = count - leftCount;
+					if (rightCount == 0)
+					{
+						rightVolume = 0;
+					}
+					else
+					{
+
+						AABB right = AABB(bvh->m_Triangles, bvh->m_TriangleIdx, iTriangle, rightCount);
+						rightVolume = right.CalculateVolume();
+					}
+					float cost = leftVolume * leftCount + rightVolume * rightCount;
+					if (cost < bestCost)
+					{
+						bestCost = cost;
+						// New start index
+						bestSplitIndex = iTriangle;
+						bestAxis = 1;
+					}
+					break;
 				}
 			}
 			splitPoint += posStep;
 		}
-
+		splitIndexY = bestSplitIndex;
 	}
-	else
+	//else
 	{
 		// Split on z
 		float posStep = dz / 10.0f;
 		SortZ(bvh->m_Triangles, bvh->m_TriangleIdx, firstLeft, firstLeft + count - 1);
 		// Find best splitpoint
 		// Offset now
-		posStep += posStep;
 		float splitPoint = posStep + m_AABB.m_Min.z;
 		int startIndex = firstLeft;
-		float lastVolume = 10000;
+		int bestSplitIndex = startIndex;
 		for (int i = 0; i < 8; ++i)
 		{
 			// Find point where we surpass the split point
-			for (int iTriangle = startIndex; iTriangle < count; ++iTriangle)
+			for (int iTriangle = startIndex; iTriangle < startIndex + count; ++iTriangle)
 			{
 				Triangle* triangle = &bvh->m_Triangles[bvh->m_TriangleIdx[iTriangle]];
 				if (triangle->m_Pos.z > splitPoint)
 				{
 					// Calculate new AABB
-					int leftCount = (iTriangle - startIndex) - 1;
-					AABB left = AABB(bvh->m_Triangles, bvh->m_TriangleIdx, startIndex, leftCount);
-					int rightCount = (count - iTriangle) - 1;
-					AABB right = AABB(bvh->m_Triangles, bvh->m_TriangleIdx, iTriangle, rightCount);
-					float volume = left.CalculateVolume() + right.CalculateVolume();
-					if (volume < lastVolume)
+					float leftVolume, rightVolume;
+					int leftCount = (iTriangle - startIndex);
+					if (leftCount == 0)
 					{
-						lastVolume = volume;
+						leftVolume = 0;
 					}
 					else
 					{
-						i = 8;// Quit outer loop
-							  // Go 2 steps back as we will set one step further
-						splitPoint -= posStep;
-						splitPoint -= posStep;
-						splitIndex = iTriangle - 1;
-						break;
+						AABB left = AABB(bvh->m_Triangles, bvh->m_TriangleIdx, startIndex, leftCount);
+						leftVolume = left.CalculateVolume();
 					}
-					// New start index
-					startIndex = iTriangle;
+
+					int rightCount = count - leftCount;
+					if (rightCount == 0)
+					{
+						rightVolume = 0;
+					}
+					else
+					{
+
+						AABB right = AABB(bvh->m_Triangles, bvh->m_TriangleIdx, iTriangle, rightCount);
+						rightVolume = right.CalculateVolume();
+					}
+					float cost = leftVolume * leftCount + rightVolume * rightCount;
+					if (cost < bestCost)
+					{
+						bestCost = cost;
+						// New start index
+						bestSplitIndex = iTriangle;
+						bestAxis = 2;
+					}
+					break;
 				}
 			}
 			splitPoint += posStep;
 		}
+		splitIndexZ = bestSplitIndex;
+	}
+	int splitIndex;
+	if (bestAxis == 0)
+	{
+		SortX(bvh->m_Triangles, bvh->m_TriangleIdx, firstLeft, firstLeft + count - 1);
+		splitIndex = splitIndexX;
+	}
+	else if (bestAxis == 1)
+	{
+		SortY(bvh->m_Triangles, bvh->m_TriangleIdx, firstLeft, firstLeft + count - 1);
+		splitIndex = splitIndexY;
+	}
+	else
+	{
+		splitIndex = splitIndexZ;
+	}
+	// Z is already sorted
+	if (initCost == bestCost)// Don't split
+	{
+		if (leftNode->count > biggest)
+		{
+			biggest = leftNode->count;
+		}
+		if (rightNode->count > biggest)
+		{
+			biggest = rightNode->count;
+		}
+		return;
 	}
 	leftNode->firstLeft = firstLeft;
 	leftNode->count = splitIndex - firstLeft;
@@ -1016,12 +1108,28 @@ void Tmpl8::BVHNode::Subdivide(BVH * bvh)
 	rightNode->count = count - (splitIndex - firstLeft);
 	if (leftNode->count == 0 || rightNode->count == 0)
 	{
+		if (leftNode->count > biggest)
+		{
+			biggest = leftNode->count;
+		}
+		if (rightNode->count > biggest)
+		{
+			biggest = rightNode->count;
+		}
 		return;
 	}
 	firstLeft = bvh->poolPtr - 1; // Save our left node index
 	count = 0; // We're not a leaf
-	leftNode->Subdivide(bvh);
-	rightNode->Subdivide(bvh);
+	leftNode->Subdivide(bvh, depth + 1);
+	if (leftNode->count > biggest)
+	{
+		biggest = leftNode->count;
+	}
+	rightNode->Subdivide(bvh, depth + 1); 
+	if (rightNode->count > biggest)
+	{
+		biggest = rightNode->count;
+	}
 }
 
 vec4 Tmpl8::BVHNode::Traverse(BVH* bvh, Ray & a_Ray)
@@ -1040,24 +1148,50 @@ vec4 Tmpl8::BVHNode::Traverse(BVH* bvh, Ray & a_Ray)
 	}
 	return color2;
 }
-
 vec4 Tmpl8::BVHNode::TraverseDepth(BVH * bvh, Ray & a_Ray, int & depth)
 {
-	depth++;
-	// Maybe invert?? 
-	if (!CheckBox(m_AABB.m_Min, m_AABB.m_Max, a_Ray.O, a_Ray.D, a_Ray.t))
-		return BACKGROUND;
-	if (count != 0)// Leaf
+	if (bvh->test)
 	{
-		return IntersectPrimitives(bvh, a_Ray);
+		// Maybe invert?? 
+		if (!CheckBox(m_AABB.m_Min, m_AABB.m_Max, a_Ray.O, a_Ray.D, a_Ray.t))
+			return BACKGROUND;
+		depth++;
+		if (count != 0)// Leaf
+		{
+			return IntersectPrimitives(bvh, a_Ray);
+		}
+		vec4 color = bvh->m_Nodes[firstLeft].TraverseDepth(bvh, a_Ray, depth);
+		vec4 color2 = bvh->m_Nodes[firstLeft + 1].TraverseDepth(bvh, a_Ray, depth);
+
+		if (color == BACKGROUND)
+		{
+			return color2;
+		}
+		return color;
 	}
-	vec4 color = bvh->m_Nodes[firstLeft].TraverseDepth(bvh, a_Ray, depth);
-	vec4 color2 = bvh->m_Nodes[firstLeft + 1].TraverseDepth(bvh, a_Ray, depth);
-	if (color == BACKGROUND)
+	else
 	{
-		return color2;
+		// Maybe invert?? 
+		if (!CheckBox(m_AABB.m_Min, m_AABB.m_Max, a_Ray.O, a_Ray.D, a_Ray.t))
+			return BACKGROUND;
+		depth++;
+		if (count != 0)// Leaf
+		{
+			return IntersectPrimitives(bvh, a_Ray);
+		}
+		vec3 delta1 = bvh->m_Nodes[firstLeft].m_AABB.m_Max - bvh->m_Nodes[firstLeft+1].m_AABB.m_Min;
+		vec3 delta2 = bvh->m_Nodes[firstLeft+1].m_AABB.m_Max - bvh->m_Nodes[firstLeft].m_AABB.m_Min;
+
+
+		vec4 color = bvh->m_Nodes[firstLeft].TraverseDepth(bvh, a_Ray, depth);
+		vec4 color2 = bvh->m_Nodes[firstLeft + 1].TraverseDepth(bvh, a_Ray, depth);
+
+		if (color == BACKGROUND)
+		{
+			return color2;
+		}
+		return color;
 	}
-	return color;
 }
 
 vec4 Tmpl8::BVHNode::IntersectPrimitives(BVH * bvh, Ray & a_Ray)

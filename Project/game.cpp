@@ -16,13 +16,13 @@ void Game::Init()
 {
     raytracer.Init(screen);
     rasterizer.Init(screen);
-    SGNode* t_potter = rasterizer.scene->Add("assets/maze.obj");
+    SGNode* t_potter = rasterizer.scene->Add("assets/pacman_close.obj");
     t_potter->SetPosition(vec3(0, 0, 0));
     for (int i = 0; i < rasterizer.scene->meshList.size(); ++i)
     {
         raytracer.objects.push_back(new MeshCollider(vec3(0), vec4(1, 0.5f + i * 0.5f, 0.5f + i * 0.5f, 0.5f + i * 0.5f), 0.5f, 0.0f, rasterizer.scene->meshList[i]));
     }
-    position = vec3(0, 0, 0);
+    position = vec3(-5, 0, 0);
 	raytracer.BuildBVH(rasterizer.scene->meshList);
 }
 
@@ -46,22 +46,27 @@ void Game::HandleInput( float dt )
         pressed = false;
     }
     
-	if (GetAsyncKeyState('W')){ position += camera.GetForward() * dt * 10.0f; raytracer.curLine = 0; }
-	if (GetAsyncKeyState('S')){ position -= camera.GetForward() * dt * 10.0f; raytracer.curLine = 0; }
-    if (GetAsyncKeyState('D')){ position += camera.GetRight()   * dt * 10.0f; raytracer.curLine = 0; }
-	if (GetAsyncKeyState('A')){ position -= camera.GetRight()   * dt * 10.0f; raytracer.curLine = 0; }
-	if (GetAsyncKeyState('R')){ position += camera.GetUp()      * dt * 10.0f; raytracer.curLine = 0; }
-    if (GetAsyncKeyState('F')){ position -= camera.GetUp()      * dt * 10.0f; raytracer.curLine = 0; }
+	if (GetAsyncKeyState('W')){ position += camera.GetForward() * dt * 40.0f; raytracer.curLine = 0; }
+	if (GetAsyncKeyState('S')){ position -= camera.GetForward() * dt * 40.0f; raytracer.curLine = 0; }
+    if (GetAsyncKeyState('D')){ position += camera.GetRight()   * dt * 40.0f; raytracer.curLine = 0; }
+	if (GetAsyncKeyState('A')){ position -= camera.GetRight()   * dt * 40.0f; raytracer.curLine = 0; }
+	if (GetAsyncKeyState('R')){ position += camera.GetUp()      * dt * 40.0f; raytracer.curLine = 0; }
+    if (GetAsyncKeyState('F')){ position -= camera.GetUp()      * dt * 40.0f; raytracer.curLine = 0; }
     camera.SetPosition(position);
-    if (GetAsyncKeyState(VK_RIGHT)) { camera.LookAt(camera.GetPosition() + camera.GetForward() + dt * 2.0f * camera.GetRight()); raytracer.curLine = 0; }
-    if (GetAsyncKeyState(VK_LEFT))  { camera.LookAt(camera.GetPosition() + camera.GetForward() - dt * 2.0f * camera.GetRight()); raytracer.curLine = 0; }
-    if (GetAsyncKeyState(VK_DOWN))  { camera.LookAt(camera.GetPosition() + camera.GetForward() + dt * 2.0f * camera.GetUp());    raytracer.curLine = 0; }
-    if (GetAsyncKeyState(VK_UP))    { camera.LookAt(camera.GetPosition() + camera.GetForward() - dt * 2.0f * camera.GetUp());    raytracer.curLine = 0; }
+    if (GetAsyncKeyState(VK_RIGHT)) { camera.LookAt(camera.GetPosition() + camera.GetForward() + dt * 4.0f * camera.GetRight()); raytracer.curLine = 0; }
+    if (GetAsyncKeyState(VK_LEFT))  { camera.LookAt(camera.GetPosition() + camera.GetForward() - dt * 4.0f * camera.GetRight()); raytracer.curLine = 0; }
+    if (GetAsyncKeyState(VK_DOWN))  { camera.LookAt(camera.GetPosition() + camera.GetForward() + dt * 4.0f * camera.GetUp());    raytracer.curLine = 0; }
+    if (GetAsyncKeyState(VK_UP))    { camera.LookAt(camera.GetPosition() + camera.GetForward() - dt * 4.0f * camera.GetUp());    raytracer.curLine = 0; }
 
-    if (GetAsyncKeyState('O')) { raytracer.lights[0] += vec3(0, dt, 0);         raytracer.curLine = 0; }
-    if (GetAsyncKeyState('P')) { raytracer.lights[0] -= vec3(0, dt, 0);         raytracer.curLine = 0; }
-    if (GetAsyncKeyState('U')) { raytracer.objects[1]->m_Pos += vec3(0, dt, 0); raytracer.curLine = 0; }
-    if (GetAsyncKeyState('I')) { raytracer.objects[1]->m_Pos -= vec3(0, dt, 0); raytracer.curLine = 0; }
+	if (GetAsyncKeyState('O')) 
+	{ 
+		raytracer.bvh->test = true;
+	}
+
+	if (GetAsyncKeyState('P'))
+	{
+		raytracer.bvh->test = false;
+	}
 }
 
 // -----------------------------------------------------------
