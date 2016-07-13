@@ -3,6 +3,7 @@
 //*******************************************************************
 
 #define MAXOBJECTS 1024
+#define PACKETSIZE 64
 
 //*******************************************************************
 
@@ -34,6 +35,14 @@ namespace Tmpl8
 
 
     typedef vec4 Color;
+	struct Color64
+	{
+		Color color[PACKETSIZE];
+	};
+	struct BOOL64
+	{
+		BOOL bools[PACKETSIZE];
+	};
     typedef struct
     {
         vec3  m_Pos;
@@ -158,11 +167,13 @@ namespace Tmpl8
             uv1 = a_Mesh->uv[a_Mesh->tri[idx * 3 + 1]];
             uv2 = a_Mesh->uv[a_Mesh->tri[idx * 3 + 2]];
             m_Tex = a_Mesh->material->texture;
+            index = idx;
+
         }
 
         vec3 HitNormal(const vec3& a_Pos);
-        BOOL Intersect(Ray& a_Ray);
         BOOL Intersect(Ray& a_Ray, float& a_U, float& a_V);
+		BOOL Intersect2(vec3& D, vec3& O, float& t, float& a_U, float& a_V);
         BOOL IsOccluded(const Ray& a_Ray);
 
         vec4 GetColor(float a_U, float a_V);
@@ -172,7 +183,7 @@ namespace Tmpl8
         vec3 normal;
         vec3 p0, p1, p2;
         vec2 uv0, uv1, uv2;
-
+        int index;
         Texture* m_Tex;
         // Texture* n_Normals
 
@@ -193,6 +204,13 @@ namespace Tmpl8
 
     };
 
+    struct RayPacket
+    {
+        vec3 O[PACKETSIZE], D[PACKETSIZE], rD[PACKETSIZE];
+        float t[PACKETSIZE];
+        //int firstActive;
+    };
+
     //========================
     //       RAYTRACER
     //========================
@@ -200,15 +218,16 @@ namespace Tmpl8
     {
     public:
         // constructor / destructor
-        Raytracer() : scene( 0 ) {}
+        Raytracer() : scene( 0 ), traverseDepth(0){}
         ~Raytracer() { _aligned_free(frameBuffer); }
         // methods
         void  Init( Surface* screen );
         BOOL  IsOccluded( Ray& ray );
         void  Render( Camera& camera );
         void  RenderScanlines(Camera& camera);
+        Color64 TraceRayPacket(RayPacket& rayPacket, int firstActive);
         Color GetColorFromSphere(Ray& a_Ray, int& a_ReflPass, int& a_RefrPass, float a_RIndex);
-		vec4  GetBVHDepth(Ray& ray,int& depth);
+        vec4  GetBVHDepth(Ray& ray,int& depth);
         void  BuildBVH(vector<Mesh*> meshList);
 
         // data members
@@ -218,6 +237,7 @@ namespace Tmpl8
         Pixel*   frameBuffer;
         BVH*     bvh;
         int      curLine;
+        bool	 traverseDepth;
         
         // Scene objects
         vector<Object*> m_Objects;
@@ -227,11 +247,12 @@ namespace Tmpl8
     //========================
     //         AABB
     //========================
+
     class AABB
     {
     public:
-        vec3 m_Min;
-        vec3 m_Max;
+        vec3 m_Min = vec3(INFINITY);
+        vec3 m_Max = vec3(-INFINITY);
         AABB(const Triangle& t)
         {
             // Get the bounds
@@ -256,6 +277,7 @@ namespace Tmpl8
         }
         AABB(Triangle* triangles, unsigned int* indexArray, unsigned int start, unsigned int count)
         {
+            assert(count > 0);
             for (unsigned int i = start; i < start + count; ++i)
             {
                 unsigned int index = indexArray[i];
@@ -269,11 +291,20 @@ namespace Tmpl8
                 m_Max.z = max(max(t.p0.z, max(t.p1.z, t.p2.z)), m_Max.z);
             }
         }
-		float CalculateVolume()
-		{
-			vec3 delta = m_Max - m_Min;
-			return delta.x * delta.x + delta.y *delta.y + delta.z*delta.z;
-		}
+        vec3 GetDelta()
+        {
+            return m_Max - m_Min;
+        }
+        float CalculateVolume()
+        {
+            vec3 delta = GetDelta();
+            return delta.x * delta.y * delta.z;
+        }
+        float CalculateSurfaceArea()
+        {
+            vec3 delta = GetDelta();
+            return (delta.z*delta.x + delta.z*delta.y + delta.x* delta.y) * 2;
+        }
     };
 
     //========================
@@ -284,6 +315,11 @@ namespace Tmpl8
         Triangle* m_Triangle;
         float   m_U, m_V;
     };
+    struct BVHResultPacket
+    {
+        Triangle* m_Triangle[PACKETSIZE];
+        float   m_U[PACKETSIZE], m_V[PACKETSIZE];
+    };
 
     //========================
     //         BVHNODE
@@ -292,13 +328,15 @@ namespace Tmpl8
     {
     public:
         AABB m_AABB;
-        int firstLeft;
-        int count;
+        glm::uint32_t firstLeft;
+        glm::uint32_t count;
 
         void Subdivide(BVH* bvh, int depth);
         BOOL Traverse(BVH* bvh, Ray& a_Ray, BVHResult& a_Result);
-		BOOL TraverseDepth(BVH* bvh, Ray& a_Ray, int& depth, BVHResult& a_Result);
+        BOOL TraverseDepth(BVH* bvh, Ray& a_Ray, int& depth, BVHResult& a_Result);
+		void TraversePacket(BVH* bvh, RayPacket& rayPacket, BVHResultPacket& resultPacket, int firstActive);
         BOOL IntersectPrimitives(BVH* bvh, Ray& a_Ray, BVHResult& a_Result);
+		void IntersectPrimitivesPacket(BVH* bvh, RayPacket& rayPacket, BVHResultPacket& resultPacket, int firstActive);
 
     };
 
@@ -311,6 +349,7 @@ namespace Tmpl8
         BVH(vector<Mesh*> meshes);
         BOOL Traverse(Ray& a_Ray, BVHResult& a_Result);
         BOOL TraverseDepth(Ray& a_Ray, int& depth, BVHResult& a_Result);
+		void TraverseRayPacket(RayPacket& rayPacket, BVHResultPacket& resultPacket, int firstActive);
         const unsigned int primPerNode = 3;
         unsigned int nNodes;// amount of nodes
         unsigned int nTris;

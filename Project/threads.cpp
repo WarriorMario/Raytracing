@@ -1,4 +1,5 @@
 #include "template.h"
+#include <thread>
 
 using namespace Tmpl8;
 
@@ -101,6 +102,7 @@ JobManager* JobManager::m_JobManager = 0;
 
 JobManager::JobManager( unsigned int threads ) : m_NumThreads( threads )
 {
+	numCores = std::thread::hardware_concurrency();
 	InitializeCriticalSection( &m_CS );
 }
 
@@ -135,6 +137,7 @@ Job* JobManager::GetNextJob()
 	return job;
 }
 
+
 void JobManager::RunJobs()
 {
 	for ( unsigned int i = 0; i < m_NumThreads; i++ ) 
@@ -147,6 +150,78 @@ void JobManager::RunJobs()
 void JobManager::ThreadDone( unsigned int n ) 
 { 
 	SetEvent( m_ThreadDone[n] ); 
+}
+
+volatile long RenderJob::waiting = 0;
+RenderData RenderJob::renderData;
+glm::ivec2 RenderJob::tiles[];
+void RenderJob::Main()
+{
+	while (1)
+	{
+		// we gonna be rendering on x threads boys
+		if (waiting < 1)
+			return;
+		int w = InterlockedDecrement(&waiting);
+		if (w >= 0)
+			RenderTile(w);
+	}
+}
+
+void RenderJob::Init(BVH * a_bvh, Camera * a_camera, Surface * a_screen, Raytracer* rayt)
+{
+	bvh = a_bvh;
+	screen = a_screen;
+	camera = a_camera;
+	raytracer = rayt;
+}
+
+Pixel VecToPixel2(vec4 color)
+{
+	Pixel result = 0;
+	result += (unsigned int)(color.x * 255) << 24;
+	result += (unsigned int)(color.y * 255) << 16;
+	result += (unsigned int)(color.z * 255) << 8;
+	result += (unsigned int)(color.w * 255);
+	return result;
+}
+
+void RenderJob::RenderTile(int tile)
+{
+	int startx = tiles[tile].x;
+	int starty = tiles[tile].y;
+	RayPacket rayPacket;
+	Color64 color;
+	int i = 0;
+	for (int y = starty; y < starty+TILESIZE; ++y)
+	{
+		int line = y * screen->GetPitch();
+		for (int x = startx; x < startx+TILESIZE; ++x)
+		{
+			float u = (float)x * renderData.invWidth;
+			float v = (float)y * renderData.invHeight;
+			float distance = 1.0f;
+			vec3 planepos = renderData.p0 + u * (renderData.p1 - renderData.p0) + v * (renderData.p2 - renderData.p0);
+			rayPacket.D[i] = normalize(planepos - camera->GetPosition());
+			rayPacket.rD[i] = 1.0f / rayPacket.D[i];
+			rayPacket.O[i] = camera->GetPosition();
+			rayPacket.t[i] = 100000000;
+			i++;
+		}
+	}
+
+	color = raytracer->TraceRayPacket(rayPacket,0);
+
+	i = 0;
+	for (int y = starty; y < starty + TILESIZE; ++y)
+	{
+		int line = y * screen->GetPitch();
+		for (int x = startx; x < startx + TILESIZE; ++x)
+		{
+			screen->GetBuffer()[x + line] = VecToPixel2(color.color[i]);
+			i++;
+		}
+	}
 }
 
 // EOF

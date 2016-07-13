@@ -1,8 +1,12 @@
 #pragma once
 
-#define SCRWIDTH	 1920
-#define SCRHEIGHT	 1080
+#define SCRWIDTH	 (800)
+#define SCRHEIGHT	 (600)
 #define SCRASPECT (float)SCRHEIGHT/(float)SCRWIDTH
+#define TILESIZE 8
+
+static_assert(SCRWIDTH % TILESIZE == 0, "OH NOES NOT ALIGEND WHATEVER");
+static_assert(SCRHEIGHT % TILESIZE == 0, "OH NOES NOT ALIGEND WHATEVER");
 
 namespace Tmpl8
 {

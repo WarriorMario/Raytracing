@@ -1,9 +1,9 @@
 #include "template.h"
-
+#include <thread>
 //*************************************************************************
 
 #define BACKGROUND vec4(1.0f, 0.3f, 0.3f, 0.3f)
-#define AMBIENT vec4(1.0f,0.5f,0.5f,0.5f)
+#define AMBIENT vec4(1.0f,0.0f,0.0f,0.0f)
 #define EPSILON 1e-4f
 
 #define MAXREFLPASSES 5
@@ -13,6 +13,8 @@
 #define MISS    0
 #define HIT     1
 #define INPRIM -1
+
+#define TEST  0
 
 //*************************************************************************
 
@@ -25,54 +27,54 @@ using namespace Tmpl8;
 // ============================================
 Pixel VecToPixel(vec4 color)
 {
-	Pixel result = 0;
-	result += (unsigned int)(color.x * 255) << 24;
-	result += (unsigned int)(color.y * 255) << 16;
-	result += (unsigned int)(color.z * 255) << 8;
-	result += (unsigned int)(color.w * 255);
-	return result;
+    Pixel result = 0;
+    result += (unsigned int)(color.x * 255) << 24;
+    result += (unsigned int)(color.y * 255) << 16;
+    result += (unsigned int)(color.z * 255) << 8;
+    result += (unsigned int)(color.w * 255);
+    return result;
 }
 vec4 PixelToVec(Pixel color)
 {
-	vec4 result = vec4(0, 0, 0, 0);
-	result.x = ((float)((color & 0xff000000) >> 24)) / 255.0f;
-	result.y = ((float)((color & 0x00ff0000) >> 16)) / 255.0f;
-	result.z = ((float)((color & 0x0000ff00) >> 8)) / 255.0f;
-	result.w = ((float)((color & 0x000000ff))) / 255.0f;
-	return result;
+    vec4 result = vec4(0, 0, 0, 0);
+    result.x = ((float)((color & 0xff000000) >> 24)) / 255.0f;
+    result.y = ((float)((color & 0x00ff0000) >> 16)) / 255.0f;
+    result.z = ((float)((color & 0x0000ff00) >> 8)) / 255.0f;
+    result.w = ((float)((color & 0x000000ff))) / 255.0f;
+    return result;
 }
 vec4 ScaleColor(unsigned int a_Scale, vec4 color)
 {
-	Pixel c = VecToPixel(color);
-	unsigned int rb = (((c & (REDMASK | BLUEMASK)) * a_Scale) >> 5) & (REDMASK | BLUEMASK);
-	unsigned int g = (((c & GREENMASK) * a_Scale) >> 5) & GREENMASK;
-	return PixelToVec(rb + g);
+    Pixel c = VecToPixel(color);
+    unsigned int rb = (((c & (REDMASK | BLUEMASK)) * a_Scale) >> 5) & (REDMASK | BLUEMASK);
+    unsigned int g = (((c & GREENMASK) * a_Scale) >> 5) & GREENMASK;
+    return PixelToVec(rb + g);
 }
 Pixel RandColor()
 {
-	int r = (rand() % 255) << 16;
-	int g = (rand() % 255) << 8;
-	int b = rand() % 255;
-	return (0xff << 24) | r | g | b;
+    int r = (rand() % 255) << 16;
+    int g = (rand() % 255) << 8;
+    int b = rand() % 255;
+    return (0xff << 24) | r | g | b;
 }
 vec3 Reflect(vec3 I, vec3 N)
 {
-	/* Calculate reflection direction R
-	*        N
-	*     \  |  /
-	*    I \ | / R
-	* ______\|/______
-	*
-	*/
+    /* Calculate reflection direction R
+    *        N
+    *     \  |  /
+    *    I \ | / R
+    * ______\|/______
+    *
+    */
 
-	// Calculate length along normal.
-	float nl = dot(I, N);
-	// Calculate projected vector in normal direction.
-	vec3 projN = nl * N;
-	// Create tangent vector by eqaulling with hit direction.
-	vec3 tan = I - projN;
-	// Add once more to get R.
-	return (tan - projN);
+    // Calculate length along normal.
+    float nl = dot(I, N);
+    // Calculate projected vector in normal direction.
+    vec3 projN = nl * N;
+    // Create tangent vector by eqaulling with hit direction.
+    vec3 tan = I - projN;
+    // Add once more to get R.
+    return (tan - projN);
 }
 bool RayTriangleIntersect(Ray & ray,
     const vec3  &v0, const vec3 &v1, const vec3 &v2,
@@ -146,35 +148,35 @@ bool RayTriangleHit(const Ray & ray, const vec3 &v0, const vec3 &v1, const vec3 
 // ============================================
 vec3 Sphere::HitNormal(const vec3& a_Pos)
 {
-	return (a_Pos - m_Pos) / m_Radius;
+    return (a_Pos - m_Pos) / m_Radius;
 }
 BOOL Sphere::Intersect(Ray& a_Ray)
 {
-	vec3 c = m_Pos - a_Ray.O;
-	float t = dot(c, a_Ray.D);
-	if (t < 0.0f) return FALSE;
-	vec3 q = c - t*a_Ray.D;
-	float p2 = dot(q, q);
-	float r2 = m_Radius * m_Radius;
-	if (p2 > r2) return FALSE;
-	t -= sqrtf(r2 - p2);
-	if (t < a_Ray.t)
-	{
-		a_Ray.t = t;
-		return TRUE;
-	}
-	return FALSE;
+    vec3 c = m_Pos - a_Ray.O;
+    float t = dot(c, a_Ray.D);
+    if (t < 0.0f) return FALSE;
+    vec3 q = c - t*a_Ray.D;
+    float p2 = dot(q, q);
+    float r2 = m_Radius * m_Radius;
+    if (p2 > r2) return FALSE;
+    t -= sqrtf(r2 - p2);
+    if (t < a_Ray.t)
+    {
+        a_Ray.t = t;
+        return TRUE;
+    }
+    return FALSE;
 }
 BOOL Sphere::IsOccluded(const Ray& a_Ray)
 {
-	vec3 c = m_Pos - a_Ray.O;
-	float t = dot(c, a_Ray.D);
-	if (t < 0.0f) return FALSE;
-	vec3 q = c - t*a_Ray.D;
-	float p2 = dot(q, q);
-	float r2 = m_Radius * m_Radius;
-	if (p2 < r2) return TRUE;
-	return FALSE;
+    vec3 c = m_Pos - a_Ray.O;
+    float t = dot(c, a_Ray.D);
+    if (t < 0.0f) return FALSE;
+    vec3 q = c - t*a_Ray.D;
+    float p2 = dot(q, q);
+    float r2 = m_Radius * m_Radius;
+    if (p2 < r2) return TRUE;
+    return FALSE;
 }
 
 // ============================================
@@ -182,31 +184,31 @@ BOOL Sphere::IsOccluded(const Ray& a_Ray)
 // ============================================
 vec3 Plane::HitNormal(const vec3& a_Pos)
 {
-	return m_Pos;
+    return m_Pos;
 }
 BOOL Plane::Intersect(Ray& a_Ray)
 {
-	// t =  (N.O+dist) / N.D
-	// Note: Plane normal is stored in pos.
-	float dnd = dot(m_Pos, a_Ray.D);
-	if (dnd == 0.0f) return FALSE;
-	float t = -(dot(m_Pos, a_Ray.O) + m_Dist) / dnd;
-	if (t < 0.0f) return FALSE;
-	if (t < a_Ray.t)
-	{
-		a_Ray.t = t;
-		return TRUE;
-	}
-	return FALSE;
+    // t =  (N.O+dist) / N.D
+    // Note: Plane normal is stored in pos.
+    float dnd = dot(m_Pos, a_Ray.D);
+    if (dnd == 0.0f) return FALSE;
+    float t = -(dot(m_Pos, a_Ray.O) + m_Dist) / dnd;
+    if (t < 0.0f) return FALSE;
+    if (t < a_Ray.t)
+    {
+        a_Ray.t = t;
+        return TRUE;
+    }
+    return FALSE;
 }
 BOOL Plane::IsOccluded(const Ray& a_Ray)
 {
-	// t =  (N.O+dist) / N.D
-	// Note: Plane normal is stored in pos.
-	float dnd = dot(m_Pos, a_Ray.D);
-	if (dnd == 0) return FALSE;
-	float t = -(dot(m_Pos, a_Ray.O) + m_Dist) / dnd;
-	if (t < 0.0f) return FALSE;
+    // t =  (N.O+dist) / N.D
+    // Note: Plane normal is stored in pos.
+    float dnd = dot(m_Pos, a_Ray.D);
+    if (dnd == 0) return FALSE;
+    float t = -(dot(m_Pos, a_Ray.O) + m_Dist) / dnd;
+    if (t < 0.0f) return FALSE;
     return TRUE;
 }
 
@@ -281,10 +283,7 @@ vec3 Triangle::HitNormal(const vec3 & a_Pos)
 {
     return normal;
 }
-BOOL Triangle::Intersect(Ray & a_Ray)
-{
-    return 0;
-}
+
 BOOL Triangle::Intersect(Ray & a_Ray, float & a_U, float & a_V)
 {
     vec3 v0v1 = p1 - p0;
@@ -295,30 +294,65 @@ BOOL Triangle::Intersect(Ray & a_Ray, float & a_U, float & a_V)
     // if the determinant is negative the triangle is backfacing
     // if the determinant is close to 0, the ray misses the triangle
     if (det < -EPSILON) return FALSE;
-    float invDet = 1 / det;
+	float invDet = 1 / det;
 
-    vec3 tvec = a_Ray.O - p0;
-    u = dot(tvec, pvec) * invDet;
-    if (u < 0 || u > 1) return FALSE;
+	vec3 tvec = a_Ray.O - p0;
+	u = dot(tvec, pvec) * invDet;
+	if (u < 0 || u > 1) return FALSE;
 
-    vec3 qvec = cross(tvec, v0v1);
-    v = dot(a_Ray.D, qvec) * invDet;
-    if (v < 0 || u + v > 1) return FALSE;
+	vec3 qvec = cross(tvec, v0v1);
+	v = dot(a_Ray.D, qvec) * invDet;
+	if (v < 0 || u + v > 1) return FALSE;
 
-    float T = dot(v0v2, qvec) * invDet;
+	float T = dot(v0v2, qvec) * invDet;
 
-    if (T < 0.0f)
-    {
-        return FALSE;
-    }
-    else if (T < a_Ray.t)
-    {
-        a_Ray.t = T;
-        a_U = u;
-        a_V = v;
-        return TRUE;
-    }
-    return FALSE;
+	if (T < 0.0f)
+	{
+		return FALSE;
+	}
+	else if (T < a_Ray.t)
+	{
+		a_Ray.t = T;
+		a_U = u;
+		a_V = v;
+		return TRUE;
+	}
+	return FALSE;
+}
+BOOL Tmpl8::Triangle::Intersect2(vec3 & D, vec3 & O, float & t, float & a_U, float & a_V)
+{
+	vec3 v0v1 = p1 - p0;
+	vec3 v0v2 = p2 - p0;
+	vec3 pvec = cross(D, v0v2);
+	float det = dot(v0v1, pvec);
+	float u, v;
+	// if the determinant is negative the triangle is backfacing
+	// if the determinant is close to 0, the ray misses the triangle
+	if (det < -EPSILON) return FALSE;
+	float invDet = 1 / det;
+
+	vec3 tvec = O - p0;
+	u = dot(tvec, pvec) * invDet;
+	if (u < 0 || u > 1) return FALSE;
+
+	vec3 qvec = cross(tvec, v0v1);
+	v = dot(D, qvec) * invDet;
+	if (v < 0 || u + v > 1) return FALSE;
+
+	float T = dot(v0v2, qvec) * invDet;
+
+	if (T < 0.0f)
+	{
+		return FALSE;
+	}
+	else if (T < t)
+	{
+		t = T;
+		a_U = u;
+		a_V = v;
+		return TRUE;
+	}
+	return FALSE;
 }
 BOOL Triangle::IsOccluded(const Ray & a_Ray)
 {
@@ -349,10 +383,11 @@ Color Triangle::GetColor(float a_U, float a_V)
 // ============================================
 void Raytracer::Init(Surface * screen)
 {
-	this->screen = screen;
-	this->frameBuffer = (Pixel*)_aligned_malloc(screen->GetHeight() * screen->GetWidth() * sizeof(Pixel), 32);
-	memset(frameBuffer, 0, screen->GetHeight() * screen->GetWidth() * sizeof(Pixel));
-	this->curLine = 0;
+    JobManager::CreateJobManager(std::thread::hardware_concurrency());
+    this->screen = screen;
+    this->frameBuffer = (Pixel*)_aligned_malloc(screen->GetHeight() * screen->GetWidth() * sizeof(Pixel), 32);
+    memset(frameBuffer, 0, screen->GetHeight() * screen->GetWidth() * sizeof(Pixel));
+    this->curLine = 0;
 
 
     //---------------------
@@ -379,72 +414,182 @@ void Raytracer::Init(Surface * screen)
 BOOL Raytracer::IsOccluded(Ray & ray)
 {
     BVHResult res;
-	return bvh->Traverse(ray, res);
+    return bvh->Traverse(ray, res);
 }
+
 void Raytracer::Render(Camera & camera)
 {
+    float fov = 1.8f;
+    //screenCenter = camera.GetForward() * fov;// +camera.GetPosition();
+    vec3 p0 = vec3(camera.transform * vec4(vec3(-1, SCRASPECT, -fov), 1));// -camera.GetPosition());
+    vec3 p1 = vec3(camera.transform * vec4(vec3(1, SCRASPECT, -fov), 1));// -camera.GetPosition());
+    vec3 p2 = vec3(camera.transform * vec4(vec3(-1, -SCRASPECT, -fov), 1));// -camera.GetPosition());
+    float invHeight = 1.0f / (float)screen->GetHeight();
+    float invWidth = 1.0f / (float)screen->GetWidth();
 
-	vec3 p0 = vec3( camera.transform * vec4( vec3( -1,  SCRASPECT, -FOV ), 1) );
-	vec3 p1 = vec3( camera.transform * vec4( vec3(  1,  SCRASPECT, -FOV ), 1) );
-	vec3 p2 = vec3( camera.transform * vec4( vec3( -1, -SCRASPECT, -FOV ), 1) );
-	float invHeight = 1.0f / (float)screen->GetHeight();
-	float invWidth = 1.0f / (float)screen->GetWidth();
+    RenderJob::renderData.invHeight = invHeight;
+    RenderJob::renderData.invWidth = invWidth;
+    RenderJob::renderData.p0 = p0;
+    RenderJob::renderData.p1 = p1;
+    RenderJob::renderData.p2 = p2;
 
-	for (int y = 0; y < screen->GetHeight(); ++y)
-	{
-		float v = (float)y *invHeight;
-		int line = y * screen->GetPitch();
-		for (int x = 0; x < screen->GetWidth(); ++x)
-		{
-			float u = (float)x *invWidth;
-			float distance = 1.0f;
-			vec3 planepos = p0 + u * (p1 - p0) + v * (p2 - p0);
+    RenderJob::waiting = 0;
+    for (int y = 0; y < screen->GetHeight(); y+=TILESIZE)
+    {
+        for (int x = 0; x < screen->GetWidth(); x+=TILESIZE)
+        {
+            RenderJob::tiles[(x/TILESIZE) + (y/TILESIZE) * (screen->GetPitch() / TILESIZE)] = ivec2(x, y);
+            RenderJob::waiting++;
+        }
+    }
 
-            // Cast a ray into the scene.
-			Ray ray = Ray(camera.GetPosition(), normalize(planepos - camera.GetPosition()), 100000000);
-            int reflPasses = 0, refrPasses = 0;
-			screen->GetBuffer()[x + line] = VecToPixel(GetColorFromSphere(ray, reflPasses, refrPasses, 1.0f));
-		}
-	}
+
+    JobManager * m = JobManager::GetJobManager();
+
+    RenderJob renderJobs[16];
+
+    for (int i = 0; i < m->numCores; i++)
+    {
+        renderJobs[i].Init(bvh, &camera, screen, this);
+        m->AddJob2(&renderJobs[i]);
+    }
+
+    m->RunJobs();
+
+    //RenderJob * renderingBiatch = new RenderJob(bvh);
+    //
+    //m->AddJob2(renderingBiatch);
+    //m->RunJobs();
 }
-void Raytracer::RenderScanlines(Camera & camera)
+
+//void Raytracer::Render(Camera & camera)
+//{
+//
+//	vec3 p0 = vec3( camera.transform * vec4( vec3( -1,  SCRASPECT, -FOV ), 1) );
+//	vec3 p1 = vec3( camera.transform * vec4( vec3(  1,  SCRASPECT, -FOV ), 1) );
+//	vec3 p2 = vec3( camera.transform * vec4( vec3( -1, -SCRASPECT, -FOV ), 1) );
+//	float invHeight = 1.0f / (float)screen->GetHeight();
+//	float invWidth = 1.0f / (float)screen->GetWidth();
+//
+//	for (int y = 0; y < screen->GetHeight(); ++y)
+//	{
+//		float v = (float)y *invHeight;
+//		int line = y * screen->GetPitch();
+//		for (int x = 0; x < screen->GetWidth(); ++x)
+//		{
+//			float u = (float)x *invWidth;
+//			float distance = 1.0f;
+//			vec3 planepos = p0 + u * (p1 - p0) + v * (p2 - p0);
+//
+//            // Cast a ray into the scene.
+//			Ray ray = Ray(camera.GetPosition(), normalize(planepos - camera.GetPosition()), 100000000);
+//            int reflPasses = 0, refrPasses = 0;
+//			screen->GetBuffer()[x + line] = VecToPixel(GetColorFromSphere(ray, reflPasses, refrPasses, 1.0f));
+//		}
+//	}
+//}
+//void Raytracer::RenderScanlines(Camera & camera)
+//{
+//	vec3 p0 = vec3( camera.transform * vec4( vec3( -1,  SCRASPECT, -FOV ), 1) );
+//	vec3 p1 = vec3( camera.transform * vec4( vec3(  1,  SCRASPECT, -FOV ), 1) );
+//	vec3 p2 = vec3( camera.transform * vec4( vec3( -1, -SCRASPECT, -FOV ), 1) );
+//	float invHeight = 1.0f / (float)screen->GetHeight();
+//	float invWidth = 1.0f / (float)screen->GetWidth();
+//
+//	int y = curLine;
+//	float v = (float)y *invHeight;
+//	int line = y * screen->GetPitch();
+//	for (int x = 0; x < screen->GetWidth(); ++x)
+//	{
+//		float u = (float)x *invWidth;
+//		float distance = 1.0f;
+//		vec3 planepos = p0 + u * (p1 - p0) + v * (p2 - p0);
+//		Ray ray = Ray(camera.GetPosition(), normalize(planepos - camera.GetPosition()), 100000000);
+//
+//        int reflPasses = 0, refrPasses = 0;
+//		int depth = 0;
+//		//vec4  color = GetBVHDepth(ray,depth);
+//		//frameBuffer[x + line] = VecToPixel(vec4(1, (float)depth / 20, 1.0f - (float)depth / 20, 0));
+//		frameBuffer[x + line] = VecToPixel(GetColorFromSphere(ray, reflPasses, refrPasses, 1.0f));
+//		if (depth > 1)
+//		{
+//			int i = 0;
+//		}
+//	}
+//	memcpy(screen->GetBuffer(), frameBuffer, screen->GetHeight() * screen->GetWidth() * sizeof(Pixel));
+//	if (curLine < screen->GetHeight() - 1)
+//		curLine++;
+//}
+int maxDepth = -1;
+Color64 Tmpl8::Raytracer::TraceRayPacket(RayPacket & rayPacket, int firstActive)
 {
-	vec3 p0 = vec3( camera.transform * vec4( vec3( -1,  SCRASPECT, -FOV ), 1) );
-	vec3 p1 = vec3( camera.transform * vec4( vec3(  1,  SCRASPECT, -FOV ), 1) );
-	vec3 p2 = vec3( camera.transform * vec4( vec3( -1, -SCRASPECT, -FOV ), 1) );
-	float invHeight = 1.0f / (float)screen->GetHeight();
-	float invWidth = 1.0f / (float)screen->GetWidth();
 
-	int y = curLine;
-	float v = (float)y *invHeight;
-	int line = y * screen->GetPitch();
-	for (int x = 0; x < screen->GetWidth(); ++x)
+	BVHResultPacket res;
+	for (int i = 0; i < PACKETSIZE; ++i)
 	{
-		float u = (float)x *invWidth;
-		float distance = 1.0f;
-		vec3 planepos = p0 + u * (p1 - p0) + v * (p2 - p0);
-		Ray ray = Ray(camera.GetPosition(), normalize(planepos - camera.GetPosition()), 100000000);
-
-        int reflPasses = 0, refrPasses = 0;
-		int depth = 0;
-		//vec4  color = GetBVHDepth(ray,depth);
-		//frameBuffer[x + line] = VecToPixel(vec4(1, (float)depth / 20, 1.0f - (float)depth / 20, 0));
-		frameBuffer[x + line] = VecToPixel(GetColorFromSphere(ray, reflPasses, refrPasses, 1.0f));
-		if (depth > 1)
-		{
-			int i = 0;
-		}
+		res.m_Triangle[i] = 0;
 	}
-	memcpy(screen->GetBuffer(), frameBuffer, screen->GetHeight() * screen->GetWidth() * sizeof(Pixel));
-	if (curLine < screen->GetHeight() - 1)
-		curLine++;
+	bvh->TraverseRayPacket(rayPacket, res, firstActive);
+	Color64 ret;
+	for (int i = 0; i < PACKETSIZE; ++i)
+	{
+		// Note: ATM all objects are triangles.
+		Triangle* tri = res.m_Triangle[i];
+		if (tri== FALSE)
+		{
+			ret.color[i] = BACKGROUND;
+			continue;
+		}
+
+		vec3 hit = rayPacket.O[i] + rayPacket.D[i] * rayPacket.t[i];
+		vec3 normal = tri->normal;
+		vec4 finalColor = vec4(0.0f);
+		vec4 colorP = tri->GetColor(res.m_U[i], res.m_V[i]); // + res.m_Object->GetColor();
+
+													   //if (obj->isLight) return obj->GetColor();
+													   // Light
+		float lightStrength = 1.0f - (tri->m_Refr + tri->m_Refl);
+		if (lightStrength > 0.0f)
+		{
+			finalColor += AMBIENT * colorP * lightStrength;
+			for (int i = 0; i < m_Lights.size(); ++i)
+			{
+				Light& light = *m_Lights[i];
+
+				Ray lightRay = Ray(hit, normalize(light.m_Pos - hit), INFINITY);
+				if (IsOccluded(lightRay) == false)
+				{
+					float d = dot(normal, lightRay.D);
+					if (d < 0.0f)
+					{
+						d = 0.0f;
+					}
+					finalColor += d*light.m_Color * colorP * lightStrength;
+				}
+			}
+		}
+		ret.color[i]= clamp(finalColor, 0.0f, 1.0f);
+	}
+	return ret;
 }
 Color Raytracer::GetColorFromSphere(Ray& a_Ray, int& a_ReflPass, int& a_RefrPass, float a_RIndex)
 {
     // If hit was null terminate ray and return background color.
     BVHResult res;
-    BOOL isHit = bvh->Traverse(a_Ray, res);
+    BOOL isHit;
+    int depth = 0;
+    if (traverseDepth)
+    {
+        isHit = bvh->TraverseDepth(a_Ray, depth, res);
+        maxDepth = max(maxDepth,depth);
+        return clamp(vec4(1, (float)depth / maxDepth, 1.0f - (float)depth / maxDepth, 0), 0.0f, 1.0f);
+    }
+    else
+    {
+        isHit = bvh->Traverse(a_Ray, res);
+    }
     if (!isHit) return BACKGROUND;
+	
 
     // Note: ATM all objects are triangles.
     Triangle* tri = res.m_Triangle;
@@ -506,25 +651,25 @@ Color Raytracer::GetColorFromSphere(Ray& a_Ray, int& a_ReflPass, int& a_RefrPass
         }
     }
 
-	//float reflectance = m_Objects[closestIndex]->m_Refl;
-	//float refractance = 0.4f;
-	//float diffuse = 1.0f - reflectance;// -refractance;
-	//vec4 colorR = reflColor * reflectance;
-	//vec4 colorT = refrColor * refractance;
+    //float reflectance = m_Objects[closestIndex]->m_Refl;
+    //float refractance = 0.4f;
+    //float diffuse = 1.0f - reflectance;// -refractance;
+    //vec4 colorR = reflColor * reflectance;
+    //vec4 colorT = refrColor * refractance;
 
-	//vec4 finalColor = lightColor;// +colorR*colorP;
-	//vec4 finalColor = (AMBIENT + lightColor) * (colorR + colorP);
+    //vec4 finalColor = lightColor;// +colorR*colorP;
+    //vec4 finalColor = (AMBIENT + lightColor) * (colorR + colorP);
 
-	return clamp(finalColor, 0.0f, 1.0f);
+    return clamp(finalColor, 0.0f, 1.0f);
 }
 vec4 Raytracer::GetBVHDepth(Ray & ray, int& depth)
 {
     return vec4(1, 1, 1, 1);
-	//return bvh->TraverseDepth(ray, depth);
+    //return bvh->TraverseDepth(ray, depth);
 }
 void Raytracer::BuildBVH(vector<Mesh*> meshList)
 {
-	bvh = new BVH(meshList);
+    bvh = new BVH(meshList);
 }
 
 //*************************************************************************
@@ -534,237 +679,241 @@ void Raytracer::BuildBVH(vector<Mesh*> meshList)
 // ============================================
 unsigned GroupX(Triangle* triangles, unsigned int*indexArray, unsigned int start, unsigned int count, float x)
 {
-	int i, j, t;
-	i = start;
-	j = start + count - 1;
-	int k = start;
-	for (k = start; k < j; ++k)
-	{
-		Triangle triangle = triangles[indexArray[k]];
-		float p = ((triangle.p0 + triangle.p1 + triangle.p2) / 3.0f).x;
-		if (p <= x)
-		{
-			t = indexArray[i];
-			indexArray[i] = indexArray[k];
-			indexArray[k] = t;
-			i++;
-		}
-		else
-		{
-			t = indexArray[j];
-			indexArray[j] = indexArray[k];
-			indexArray[k] = t;
-			j--;
-			k--;
-		}
-	}
-	return k;
+    int i, j, t;
+    i = start;
+    j = start + count - 1;
+    int k = start;
+    for (k = start; k < j; ++k)
+    {
+        Triangle triangle = triangles[indexArray[k]];
+        float p = ((triangle.p0 + triangle.p1 + triangle.p2) / 3.0f).x;
+        if (p <= x)
+        {
+            t = indexArray[i];
+            indexArray[i] = indexArray[k];
+            indexArray[k] = t;
+            i++;
+        }
+        else
+        {
+            t = indexArray[j];
+            indexArray[j] = indexArray[k];
+            indexArray[k] = t;
+            j--;
+            k--;
+        }
+    }
+    return k;
 }
 unsigned GroupY(Triangle* triangles, unsigned int*indexArray, unsigned int start, unsigned int count, float y)
 {
-	int i, j, t;
-	i = start;
-	j = start + count - 1;
-	int k = start;
-	for (k = start; k < j; ++k)
-	{
-		Triangle triangle = triangles[indexArray[k]];
-		float p = ((triangle.p0 + triangle.p1 + triangle.p2) / 3.0f).y;
-		if (p <= y)
-		{
-			t = indexArray[i];
-			indexArray[i] = indexArray[k];
-			indexArray[k] = t;
-			i++;
-		}
-		else
-		{
-			t = indexArray[j];
-			indexArray[j] = indexArray[k];
-			indexArray[k] = t;
-			j--;
-			k--;
-		}
-	}
-	return k;
+    int i, j, t;
+    i = start;
+    j = start + count - 1;
+    int k = start;
+    for (k = start; k < j; ++k)
+    {
+        Triangle triangle = triangles[indexArray[k]];
+        float p = ((triangle.p0 + triangle.p1 + triangle.p2) / 3.0f).y;
+        if (p <= y)
+        {
+            t = indexArray[i];
+            indexArray[i] = indexArray[k];
+            indexArray[k] = t;
+            i++;
+        }
+        else
+        {
+            t = indexArray[j];
+            indexArray[j] = indexArray[k];
+            indexArray[k] = t;
+            j--;
+            k--;
+        }
+    }
+    return k;
 }
 unsigned GroupZ(Triangle* triangles, unsigned int*indexArray, unsigned int start, unsigned int count, float z)
 {
-	int i, j, t;
-	i = start;
-	j = start + count - 1;
-	int k = start;
-	for (k = start; k < j; ++k)
-	{
-		Triangle triangle = triangles[indexArray[k]];
-		float p = ((triangle.p0 + triangle.p1 + triangle.p2) / 3.0f).z;
-		if (p <= z)
-		{
-			t = indexArray[i];
-			indexArray[i] = indexArray[k];
-			indexArray[k] = t;
-			i++;
-		}
-		else
-		{
-			t = indexArray[j];
-			indexArray[j] = indexArray[k];
-			indexArray[k] = t;
-			j--;
-			k--;
-		}
-	}
-	return k;
+    int i, j, t;
+    i = start;
+    j = start + count - 1;
+    int k = start;
+    for (k = start; k < j; ++k)
+    {
+        Triangle triangle = triangles[indexArray[k]];
+        float p = ((triangle.p0 + triangle.p1 + triangle.p2) / 3.0f).z;
+        if (p <= z)
+        {
+            t = indexArray[i];
+            indexArray[i] = indexArray[k];
+            indexArray[k] = t;
+            i++;
+        }
+        else
+        {
+            t = indexArray[j];
+            indexArray[j] = indexArray[k];
+            indexArray[k] = t;
+            j--;
+            k--;
+        }
+    }
+    return k;
 }
 
-void SortX(Triangle* triangles, unsigned int*indexArray, unsigned int start, unsigned int end)
+
+
+void SortX(Triangle* triangles, unsigned int*indexArray, int start, int end)
 {
-	if ((end - start) < 2)
-		return;
-	unsigned int L = start;
-	unsigned int R = end;
-	float center = triangles[indexArray[((L + R) / 2)]].m_Pos.x;
+     int L = start;
+     int R = end;
+    float center = triangles[indexArray[((L + R) / 2)]].m_Pos.x;
 
-	while (L < R)
-	{
-		while (triangles[indexArray[L]].m_Pos.x < center)
-		{
-			L++;
-		}
-		while (triangles[indexArray[R]].m_Pos.x > center)
-		{
-			R--;
-		}
+    while (L < R)
+    {
+        while (triangles[indexArray[L]].m_Pos.x < center)
+        {
+            L++;
+        }
+        while (triangles[indexArray[R]].m_Pos.x > center)
+        {
+            R--;
+        }
 
-		if (L <= R)
-		{
-			unsigned int left = indexArray[L];
-			indexArray[L] = indexArray[R];
-			indexArray[R] = left;
-			L++;
-			R--;
-		}
-	} 
+        if (L <= R)
+        {
+            unsigned int left = indexArray[L];
+            indexArray[L] = indexArray[R];
+            indexArray[R] = left;
+            L++;
+            R--;
+        }
+    }
 
-	if (start < R)
-	{
-		SortX(triangles, indexArray, start, R);
-	}
-	if (L < (end))
-	{
-		SortX(triangles, indexArray, L, end);
-	}
+    if (start < R)
+    {
+        SortX(triangles, indexArray, start, R);
+    }
+    if (L < (end))
+    {
+        SortX(triangles, indexArray, L, end);
+    }
 }
-void SortY(Triangle* triangles, unsigned int*indexArray, unsigned int start, unsigned int end)
+void SortY(Triangle* triangles, unsigned int*indexArray, int start, int end)
 {
-	if ((end - start) < 2)
-		return;
-	unsigned int L = start;
-	unsigned int R = end;
-	float center = triangles[indexArray[((L + R) / 2)]].m_Pos.y;
+    int L = start;
+    int R = end;
+    float center = triangles[indexArray[((L + R) / 2)]].m_Pos.y;
 
-	while (L < R)
-	{
-		while (triangles[indexArray[L]].m_Pos.y < center)
-		{
-			L++;
-		}
-		while (triangles[indexArray[R]].m_Pos.y > center)
-		{
-			R--;
-		}
+    while (L < R)
+    {
+        while (triangles[indexArray[L]].m_Pos.y < center)
+        {
+            L++;
+        }
+        while (triangles[indexArray[R]].m_Pos.y > center)
+        {
+            R--;
+        }
 
-		if (L <= R)
-		{
-			unsigned int left = indexArray[L];
-			indexArray[L] = indexArray[R];
-			indexArray[R] = left;
-			L++;
-			R--;
-		}
-	} 
+        if (L <= R)
+        {
+            unsigned int left = indexArray[L];
+            indexArray[L] = indexArray[R];
+            indexArray[R] = left;
+            L++;
+            R--;
+        }
+    }
 
-	if (start < R)
-	{
-		SortY(triangles, indexArray, start, R);
-	}
-	if (L < (end))
-	{
-		SortY(triangles, indexArray, L, end);
-	}
+    if (start < R)
+    {
+        SortY(triangles, indexArray, start, R);
+    }
+    if (L < (end))
+    {
+        SortY(triangles, indexArray, L, end);
+    }
 }
-void SortZ(Triangle* triangles, unsigned int*indexArray, unsigned int start, unsigned int end)
+void SortZ(Triangle* triangles, unsigned int*indexArray, int start, int end)
 {
-	if ((end - start) < 2)
-		return;
-	unsigned int L = start;
-	unsigned int R = end;
-	float center = triangles[indexArray[((L + R) / 2)]].m_Pos.z;
+    int L = start;
+    int R = end;
+    float center = triangles[indexArray[((L + R) / 2)]].m_Pos.z;
 
-	while (L < R)
-	{
-		while (triangles[indexArray[L]].m_Pos.z < center)
-		{
-			L++;
-		}
-		while (triangles[indexArray[R]].m_Pos.z > center)
-		{
-			R--;
-		}
+    while (L < R)
+    {
+        while (triangles[indexArray[L]].m_Pos.z < center)
+        {
+            L++;
+        }
+        while (triangles[indexArray[R]].m_Pos.z > center)
+        {
+            R--;
+        }
 
-		if (L <= R)
-		{
-			unsigned int left = indexArray[L];
-			indexArray[L] = indexArray[R];
-			indexArray[R] = left;
-			L++;
-			R--;
-		}
-	}
+        if (L <= R)
+        {
+            unsigned int left = indexArray[L];
+            indexArray[L] = indexArray[R];
+            indexArray[R] = left;
+            L++;
+            R--;
+        }
+    }
 
-	if (start < R)
-	{
-		SortZ(triangles, indexArray, start, R);
-	}
-	if (L < (end))
-	{
-		SortZ(triangles, indexArray, L, end);
-	}
+    if (start < R)
+    {
+        SortZ(triangles, indexArray, start, R);
+    }
+    if (L < (end))
+    {
+        SortZ(triangles, indexArray, L, end);
+    }
 }
 
-bool CheckBox(vec3& bmin, vec3& bmax, vec3 O, vec3 rD, float t)
+bool CheckBox(vec3& bmin, vec3& bmax, vec3& O, vec3& rD, float t)
 {
-    vec3 tMin = (bmin - O) / rD, tMax = (bmax - O) / rD;
+    vec3 tMin = (bmin - O) * rD, tMax = (bmax - O) * rD;
     vec3 t1 = min(tMin, tMax), t2 = max(tMin, tMax);
     float tNear = max(max(t1.x, t1.y), t1.z);
     float tFar = min(min(t2.x, t2.y), t2.z);
-    return ((tFar > tNear) && (tNear < t) && (tFar > 0));
+    return ((tFar >= tNear) && (tNear < t) && (tFar > 0));
 }
 
+bool BoxIntersect(AABB& aabb, Ray& ray)
+{
+    vec3 tMin = (aabb.m_Min - ray.O) / ray.D, tMax = (aabb.m_Max - ray.O) / ray.D;
+    vec3 t1 = min(tMin, tMax), t2 = max(tMin, tMax);
+    float tNear = max(max(t1.x, t1.y), t1.z);
+    float tFar = min(min(t2.x, t2.y), t2.z);
+    return ((tFar >= tNear) && (tNear < ray.t) && (tFar > 0));
+}
 
 // ============================================
 //                     BVH
 // ============================================
 BVH::BVH(vector<Mesh*> meshes)
 {
-	nTris = 0;
-	for (int i = 0; i < meshes.size(); ++i)
-	{
-		nTris += meshes[i]->tris;
-	}
+    nTris = 0;
+    for (int i = 0; i < meshes.size(); ++i)
+    {
+        nTris += meshes[i]->tris;
+    }
     
-	m_Triangles = (Triangle*)malloc(nTris * sizeof(Triangle));
-	m_TriangleIdx = (unsigned int*)malloc(nTris * sizeof(int));
-	unsigned int trIdx = 0;
-	for (int i = 0; i < meshes.size(); ++i)
-	{
+    m_Triangles = (Triangle*)malloc(nTris * sizeof(Triangle));
+    m_TriangleIdx = (unsigned int*)malloc(nTris * sizeof(int));
+    unsigned int trIdx = 0;
+    for (int i = 0; i < meshes.size(); ++i)
+    {
         if (i > 0)
         {
             // floor
             for (int j = 0; j < meshes[i]->tris; ++j)
             {
-                m_Triangles[trIdx] = Triangle(vec3(0), vec4(0), 0.4f, 0.0f, 1.0f, meshes[i], j);
-                m_TriangleIdx[trIdx] = trIdx;
+                m_Triangles[trIdx] = Triangle(vec3(0), vec4(0), 0.0f, 0.0f, 1.0f, meshes[i], j);
+				m_TriangleIdx[trIdx] = trIdx;
                 trIdx++;
             }
         }
@@ -773,33 +922,37 @@ BVH::BVH(vector<Mesh*> meshes)
             // mazes
             for (int j = 0; j < meshes[i]->tris; ++j)
             {
-                m_Triangles[trIdx] = Triangle(vec3(0), vec4(0), 0.6f, 0.3f, 1.5f, meshes[i], j);
+                m_Triangles[trIdx] = Triangle(vec3(0), vec4(0), 0.0f, 0.3f, 1.5f, meshes[i], j);
                 m_TriangleIdx[trIdx] = trIdx;
                 trIdx++;
             }
         }
-	}
+    }
 
-	// check the size of BVHNode
-	size_t size = sizeof(BVHNode);
-	nNodes = nTris * 2 + 1;
-	m_Nodes = (BVHNode*)_aligned_malloc(nNodes * sizeof(BVHNode), 128);
+    // check the size of BVHNode
+    size_t size = sizeof(BVHNode);
+    nNodes = nTris * 2 + 1;
+    m_Nodes = (BVHNode*)_aligned_malloc(nNodes * sizeof(BVHNode), 128);
 
-	BVHNode* root = &m_Nodes[0];
-	poolPtr = 0;
+    BVHNode* root = &m_Nodes[0];
+    poolPtr = 2;
     maxDepth = 0;
-	root->firstLeft = 0;
-	root->count = nTris;
-	root->Subdivide(this, 0); // construct the first node
+    root->firstLeft = 0;
+    root->count = nTris;
+    root->Subdivide(this, 0); // construct the first node
+    int test = 0;
 }
 BOOL BVH::Traverse(Ray & a_Ray, BVHResult& a_Result)
 {
-	return m_Nodes[0].Traverse(this, a_Ray, a_Result);
+    if(CheckBox(m_Nodes[0].m_AABB.m_Min,m_Nodes[0].m_AABB.m_Max,a_Ray.O,a_Ray.D, a_Ray.t))
+        return m_Nodes[0].Traverse(this, a_Ray, a_Result);
+    return FALSE;
 }
 BOOL BVH::TraverseDepth(Ray & a_Ray, int& depth, BVHResult& a_Result)
 {
     return m_Nodes[0].TraverseDepth(this, a_Ray, depth, a_Result);
 }
+
 void BVHNode::Subdivide(BVH * bvh, int depth)
 {
     bvh->maxDepth = max(bvh->maxDepth, depth);
@@ -824,8 +977,8 @@ void BVHNode::Subdivide(BVH * bvh, int depth)
     int splitIndexX = 0;
     int splitIndexY = 0;
     int splitIndexZ = 0;
-    float initCost = m_AABB.CalculateVolume()*count;
-    float bestCost = m_AABB.CalculateVolume()*count;
+    float initCost = m_AABB.CalculateSurfaceArea()*count;
+    float bestCost = m_AABB.CalculateSurfaceArea()*count;
     int bestAxis = 0;
     //if (dx > dy && dx > dz)
     {
@@ -835,6 +988,7 @@ void BVHNode::Subdivide(BVH * bvh, int depth)
         // Find best splitpoint
         // Offset now
         float splitPoint = posStep + m_AABB.m_Min.x;
+		splitPoint += posStep;
         int startIndex = firstLeft;
         int bestSplitIndex = startIndex;
         for (int i = 0; i < 8; ++i)
@@ -855,7 +1009,8 @@ void BVHNode::Subdivide(BVH * bvh, int depth)
                     else
                     {
                         AABB left = AABB(bvh->m_Triangles, bvh->m_TriangleIdx, startIndex, leftCount);
-                        leftVolume = left.CalculateVolume();
+						assert(startIndex+leftCount>firstLeft);
+                        leftVolume = left.CalculateSurfaceArea();
                     }
 
                     int rightCount = count - leftCount;
@@ -867,14 +1022,15 @@ void BVHNode::Subdivide(BVH * bvh, int depth)
                     {
 
                         AABB right = AABB(bvh->m_Triangles, bvh->m_TriangleIdx, iTriangle, rightCount);
-                        rightVolume = right.CalculateVolume();
+						assert(iTriangle + rightCount<=firstLeft+count);
+                        rightVolume = right.CalculateSurfaceArea();
                     }
                     float cost = leftVolume * leftCount + rightVolume * rightCount;
                     if (cost < bestCost)
                     {
                         bestCost = cost;
                         // New start index
-                        bestSplitIndex = iTriangle;
+                        bestSplitIndex = iTriangle -1;
                         bestAxis = 0;
                     }
                     break;
@@ -882,6 +1038,7 @@ void BVHNode::Subdivide(BVH * bvh, int depth)
             }
             splitPoint += posStep;
         }
+
         splitIndexX = bestSplitIndex;
     }
     //else if (dy > dz)
@@ -892,9 +1049,10 @@ void BVHNode::Subdivide(BVH * bvh, int depth)
         // Find best splitpoint
         // Offset now
         float splitPoint = posStep + m_AABB.m_Min.y;
+		splitPoint += posStep;
         int startIndex = firstLeft;
         int bestSplitIndex = startIndex;
-        for (int i = 0; i < 8; ++i)
+        for (int i = 0; i <8; ++i)
         {
             // Find point where we surpass the split point
             for (int iTriangle = startIndex; iTriangle < startIndex + count; ++iTriangle)
@@ -912,7 +1070,8 @@ void BVHNode::Subdivide(BVH * bvh, int depth)
                     else
                     {
                         AABB left = AABB(bvh->m_Triangles, bvh->m_TriangleIdx, startIndex, leftCount);
-                        leftVolume = left.CalculateVolume();
+						assert(startIndex + leftCount>firstLeft);
+                        leftVolume = left.CalculateSurfaceArea();
                     }
 
                     int rightCount = count - leftCount;
@@ -924,14 +1083,15 @@ void BVHNode::Subdivide(BVH * bvh, int depth)
                     {
 
                         AABB right = AABB(bvh->m_Triangles, bvh->m_TriangleIdx, iTriangle, rightCount);
-                        rightVolume = right.CalculateVolume();
+						assert(iTriangle + rightCount <= firstLeft + count);
+                        rightVolume = right.CalculateSurfaceArea();
                     }
                     float cost = leftVolume * leftCount + rightVolume * rightCount;
                     if (cost < bestCost)
                     {
                         bestCost = cost;
                         // New start index
-                        bestSplitIndex = iTriangle;
+                        bestSplitIndex = iTriangle -1;
                         bestAxis = 1;
                     }
                     break;
@@ -949,6 +1109,7 @@ void BVHNode::Subdivide(BVH * bvh, int depth)
         // Find best splitpoint
         // Offset now
         float splitPoint = posStep + m_AABB.m_Min.z;
+		splitPoint += posStep;
         int startIndex = firstLeft;
         int bestSplitIndex = startIndex;
         for (int i = 0; i < 8; ++i)
@@ -969,7 +1130,8 @@ void BVHNode::Subdivide(BVH * bvh, int depth)
                     else
                     {
                         AABB left = AABB(bvh->m_Triangles, bvh->m_TriangleIdx, startIndex, leftCount);
-                        leftVolume = left.CalculateVolume();
+						assert(startIndex + leftCount>firstLeft);
+                        leftVolume = left.CalculateSurfaceArea();
                     }
 
                     int rightCount = count - leftCount;
@@ -981,14 +1143,15 @@ void BVHNode::Subdivide(BVH * bvh, int depth)
                     {
 
                         AABB right = AABB(bvh->m_Triangles, bvh->m_TriangleIdx, iTriangle, rightCount);
-                        rightVolume = right.CalculateVolume();
+						assert(iTriangle + rightCount <= firstLeft + count);
+                        rightVolume = right.CalculateSurfaceArea();
                     }
                     float cost = leftVolume * leftCount + rightVolume * rightCount;
                     if (cost < bestCost)
                     {
                         bestCost = cost;
                         // New start index
-                        bestSplitIndex = iTriangle;
+                        bestSplitIndex = iTriangle- 1;
                         bestAxis = 2;
                     }
                     break;
@@ -1009,25 +1172,29 @@ void BVHNode::Subdivide(BVH * bvh, int depth)
         SortY(bvh->m_Triangles, bvh->m_TriangleIdx, firstLeft, firstLeft + count - 1);
         splitIndex = splitIndexY;
     }
-    else
+    else if (bestAxis ==2)
     {
+		SortZ(bvh->m_Triangles, bvh->m_TriangleIdx, firstLeft, firstLeft + count - 1);
         splitIndex = splitIndexZ;
     }
     // Z is already sorted
     if (initCost == bestCost)// Don't split
     {
+		// We're not using these nodes now
+		bvh->poolPtr -= 2;
         return;
     }
     leftNode->firstLeft = firstLeft;
     leftNode->count = splitIndex - firstLeft;
     rightNode->firstLeft = splitIndex;
     rightNode->count = count - (splitIndex - firstLeft);
-    assert(leftNode->count != 0 && rightNode->count != 0);/*
+    //assert(leftNode->count != 0 && rightNode->count != 0);
     
     if (leftNode->count == 0 || rightNode->count == 0)
     {
+		bvh->poolPtr -= 2;
         return;
-    }*/
+    }
 
     firstLeft = bvh->poolPtr - 1; // Save our left node index
     count = 0; // We're not a leaf
@@ -1036,44 +1203,262 @@ void BVHNode::Subdivide(BVH * bvh, int depth)
 }
 BOOL BVHNode::Traverse(BVH* bvh, Ray & a_Ray, BVHResult& a_Result)
 {
+#if TEST
     if (!CheckBox(m_AABB.m_Min, m_AABB.m_Max, a_Ray.O, a_Ray.D, a_Ray.t))
         return FALSE;
-	if (count != 0)// Leaf
-	{
+    if (count != 0)// Leaf
+    {
         return IntersectPrimitives(bvh, a_Ray, a_Result);
-	}
+    }
 
     // small optimization -> check which one is closer first, because it has a higher chance that the ray'll hit an object closer to the ray origin.
-	return bvh->m_Nodes[firstLeft + 1].Traverse(bvh, a_Ray, a_Result) | bvh->m_Nodes[firstLeft].Traverse(bvh, a_Ray, a_Result);
+	int result = bvh->m_Nodes[firstLeft].Traverse(bvh, a_Ray, a_Result);
+	result |= bvh->m_Nodes[firstLeft + 1].Traverse(bvh, a_Ray, a_Result);
+	return result;
+#else
+    if (count != 0)// Leaf
+    {
+        return IntersectPrimitives(bvh, a_Ray, a_Result);
+    }
+
+    BVHNode* left = &bvh->m_Nodes[firstLeft];
+    BVHNode* right = left + 1;
+
+    vec3 tMin = (left->m_AABB.m_Min - a_Ray.O) / a_Ray.D, tMax = (left->m_AABB.m_Max - a_Ray.O) / a_Ray.D;
+    vec3 t1 = min(tMin, tMax), t2 = max(tMin, tMax);
+    float tNear = max(max(t1.x, t1.y), t1.z);
+    float tFar = min(min(t2.x, t2.y), t2.z);
+    BOOL leftN = (tFar >= tNear) && (tNear < a_Ray.t) && (tFar > 0);
+
+    vec3 tMin2 = (right->m_AABB.m_Min - a_Ray.O) / a_Ray.D, tMax2 = (right->m_AABB.m_Max - a_Ray.O) / a_Ray.D;
+    vec3 t12 = min(tMin2, tMax2), t22 = max(tMin2, tMax2);
+    float tNear2 = max(max(t12.x, t12.y), t12.z);
+    float tFar2 = min(min(t22.x, t22.y), t22.z);
+    BOOL rightN = (tFar2 >= tNear2) && (tNear2 < a_Ray.t) && (tFar2 > 0);
+
+    if (leftN)
+    {
+        if (rightN)
+        {
+            if (tNear2 < tNear)
+            {
+                BOOL hit = right->Traverse(bvh, a_Ray, a_Result);
+                hit += left->Traverse(bvh, a_Ray, a_Result);
+                return hit;
+            }
+            BOOL hit = left->Traverse(bvh, a_Ray, a_Result);
+            hit += right->Traverse(bvh, a_Ray, a_Result);
+            return hit;
+        }
+        return  left->Traverse(bvh, a_Ray, a_Result);
+    }
+    else if (rightN)
+    {
+        return right->Traverse(bvh, a_Ray, a_Result);
+    }
+    else
+    {
+        return FALSE;
+    }
+#endif
 }
 BOOL BVHNode::TraverseDepth(BVH * bvh, Ray & a_Ray, int & depth, BVHResult& a_Result)
 {
-	depth++;
-	// Maybe invert?? No raymi u drunk.
+#if TEST
+    depth++;
+    // Maybe invert?? No raymi u drunk.
     if (!CheckBox(m_AABB.m_Min, m_AABB.m_Max, a_Ray.O, a_Ray.D, a_Ray.t))
         return FALSE;
-	if (count != 0)// Leaf
-	{
+    if (count != 0)// Leaf
+    {
         return IntersectPrimitives(bvh, a_Ray, a_Result);
-	}
-	return bvh->m_Nodes[firstLeft + 1].TraverseDepth(bvh, a_Ray, depth, a_Result) | bvh->m_Nodes[firstLeft].TraverseDepth(bvh, a_Ray, depth, a_Result);
+    }
+	int result = bvh->m_Nodes[firstLeft].TraverseDepth(bvh, a_Ray, depth, a_Result);
+	result |= bvh->m_Nodes[firstLeft + 1].TraverseDepth(bvh, a_Ray, depth, a_Result);
+    return result ;
+#else
+    depth++;
+if (count != 0)// Leaf
+{
+    return IntersectPrimitives(bvh, a_Ray, a_Result);
 }
+
+BVHNode* left = &bvh->m_Nodes[firstLeft];
+BVHNode* right = left + 1;
+
+vec3 tMin = (left->m_AABB.m_Min - a_Ray.O) / a_Ray.D, tMax = (left->m_AABB.m_Max - a_Ray.O) / a_Ray.D;
+vec3 t1 = min(tMin, tMax), t2 = max(tMin, tMax);
+float tNear = max(max(t1.x, t1.y), t1.z);
+float tFar = min(min(t2.x, t2.y), t2.z);
+BOOL leftN = (tFar > tNear) && (tNear < a_Ray.t) && (tFar > 0);
+
+vec3 tMin2 = (right->m_AABB.m_Min - a_Ray.O) / a_Ray.D, tMax2 = (right->m_AABB.m_Max - a_Ray.O) / a_Ray.D;
+vec3 t12 = min(tMin2, tMax2), t22 = max(tMin2, tMax2);
+float tNear2 = max(max(t12.x, t12.y), t12.z);
+float tFar2 = min(min(t22.x, t22.y), t22.z);
+BOOL rightN = (tFar2 > tNear2) && (tNear2 < a_Ray.t) && (tFar2 > 0);
+
+if (leftN)
+{
+    if (rightN)
+    {
+        if (tNear2 < tNear)
+        {
+            BOOL hit = right->TraverseDepth(bvh, a_Ray, depth, a_Result);
+            hit += left->TraverseDepth(bvh, a_Ray, depth, a_Result);
+            return hit;
+        }
+        BOOL hit = left->TraverseDepth(bvh, a_Ray, depth, a_Result);
+        hit += right->TraverseDepth(bvh, a_Ray, depth, a_Result);
+        return hit;
+    }
+    return  left->TraverseDepth(bvh, a_Ray, depth, a_Result);
+}
+else if (rightN)
+{
+    return right->TraverseDepth(bvh, a_Ray, depth, a_Result);
+}
+else
+{
+    return FALSE;
+}
+#endif
+}
+
 BOOL BVHNode::IntersectPrimitives(BVH * bvh, Ray & a_Ray, BVHResult& a_Result)
 {
-	// Loop through the triangles
+    // Loop through the triangles
     Triangle* triangle;
-	float u, v;
-	for (int i = firstLeft; i < firstLeft + count; ++i)
-	{
+    float u, v;
+	bool hit = false;
+	for (int i = firstLeft; i < firstLeft+count; ++i)
+    {
         triangle = &bvh->m_Triangles[bvh->m_TriangleIdx[i]];
         if (triangle->Intersect(a_Ray, u, v))
         {
             a_Result.m_Triangle = triangle;
             a_Result.m_U = u;
             a_Result.m_V = v;
-            
-            return TRUE;
+			hit = true;
         }
+    }
+    return hit;
+}
+
+
+void Tmpl8::BVH::TraverseRayPacket(RayPacket & rayPacket, BVHResultPacket & resultPacket, int firstActive)
+{
+	for (int i = 0; i < PACKETSIZE; ++i)
+	{
+		if (CheckBox(m_Nodes[0].m_AABB.m_Min, m_Nodes[0].m_AABB.m_Max, rayPacket.O[i], rayPacket.rD[i], rayPacket.t[i]))
+		{
+			return m_Nodes[0].TraversePacket(this, rayPacket, resultPacket, i);
+		}
 	}
-	return FALSE;
+}
+
+void Tmpl8::BVHNode::TraversePacket(BVH * bvh, RayPacket & rayPacket, BVHResultPacket & resultPacket, int firstActive)
+{
+	if (count != 0)// Leaf
+	{
+		IntersectPrimitivesPacket(bvh, rayPacket, resultPacket, firstActive);
+		return;
+	}
+
+
+	BVHNode* left = &bvh->m_Nodes[firstLeft];
+	BVHNode* right = left + 1;
+
+	vec3 tMin = (left->m_AABB.m_Min - rayPacket.O[firstActive]) * rayPacket.rD[firstActive], tMax = (left->m_AABB.m_Max - rayPacket.O[firstActive]) * rayPacket.rD[firstActive];
+	vec3 t1 = min(tMin, tMax), t2 = max(tMin, tMax);
+	float tNear = max(max(t1.x, t1.y), t1.z);
+	//float tFar = min(min(t2.x, t2.y), t2.z);
+	//BOOL leftN = (tFar >= tNear) && (tNear < rayPacket.t[firstActive]) && (tFar > 0);
+
+	vec3 tMin2 = (right->m_AABB.m_Min - rayPacket.O[firstActive]) * rayPacket.rD[firstActive], tMax2 = (right->m_AABB.m_Max - rayPacket.O[firstActive]) * rayPacket.rD[firstActive];
+	vec3 t12 = min(tMin2, tMax2), t22 = max(tMin2, tMax2);
+	float tNear2 = max(max(t12.x, t12.y), t12.z);
+	//float tFar2 = min(min(t22.x, t22.y), t22.z);
+	//BOOL rightN = (tFar2 >= tNear2) && (tNear2 < rayPacket.t[firstActive]) && (tFar2 > 0);
+
+	if (tNear2 < tNear)
+	{
+		// Check right first
+		for (int i = firstActive; i < PACKETSIZE; ++i)
+		{
+			vec3 tMinr = (right->m_AABB.m_Min - rayPacket.O[i]) * rayPacket.rD[i], tMaxr = (right->m_AABB.m_Max - rayPacket.O[i]) * rayPacket.rD[i];
+			vec3 t1r = min(tMinr, tMaxr), t2r = max(tMinr, tMaxr);
+			float tNearr = max(max(t1r.x, t1r.y), t1r.z);
+			float tFarr = min(min(t2r.x, t2r.y), t2r.z);
+			if ((tFarr >= tNearr) && (tNearr < rayPacket.t[i]) && (tFarr > 0))
+			{
+				right->TraversePacket(bvh, rayPacket, resultPacket, i);
+				break;
+			}
+		}
+		for (int i = firstActive; i < PACKETSIZE; ++i)
+		{
+			// Left
+			vec3 tMinr = (left->m_AABB.m_Min - rayPacket.O[i]) * rayPacket.rD[i], tMaxr = (left->m_AABB.m_Max - rayPacket.O[i]) * rayPacket.rD[i];
+			vec3 t1r = min(tMinr, tMaxr), t2r = max(tMinr, tMaxr);
+			float tNearr = max(max(t1r.x, t1r.y), t1r.z);
+			float tFarr = min(min(t2r.x, t2r.y), t2r.z);
+			if ((tFarr >= tNearr) && (tNearr < rayPacket.t[i]) && (tFarr > 0))
+			{
+				left->TraversePacket(bvh, rayPacket, resultPacket, i);
+				break;
+			}
+		}
+
+	}
+	else
+	{
+		for (int i = firstActive; i < PACKETSIZE; ++i)
+		{
+			// Left
+			vec3 tMinr = (left->m_AABB.m_Min - rayPacket.O[i]) * rayPacket.rD[i], tMaxr = (left->m_AABB.m_Max - rayPacket.O[i]) * rayPacket.rD[i];
+			vec3 t1r = min(tMinr, tMaxr), t2r = max(tMinr, tMaxr);
+			float tNearr = max(max(t1r.x, t1r.y), t1r.z);
+			float tFarr = min(min(t2r.x, t2r.y), t2r.z);
+			if ((tFarr >= tNearr) && (tNearr < rayPacket.t[i]) && (tFarr > 0))
+			{
+				left->TraversePacket(bvh, rayPacket, resultPacket, i);
+				break;
+			}
+		}
+		// Check right first
+		for (int i = firstActive; i < PACKETSIZE; ++i)
+		{
+			vec3 tMinr = (right->m_AABB.m_Min - rayPacket.O[i]) * rayPacket.rD[i], tMaxr = (right->m_AABB.m_Max - rayPacket.O[i]) * rayPacket.rD[i];
+			vec3 t1r = min(tMinr, tMaxr), t2r = max(tMinr, tMaxr);
+			float tNearr = max(max(t1r.x, t1r.y), t1r.z);
+			float tFarr = min(min(t2r.x, t2r.y), t2r.z);
+			if ((tFarr >= tNearr) && (tNearr < rayPacket.t[i]) && (tFarr > 0))
+			{
+				right->TraversePacket(bvh, rayPacket, resultPacket, i);
+				break;
+			}
+		}
+	}
+}
+
+void Tmpl8::BVHNode::IntersectPrimitivesPacket(BVH * bvh, RayPacket & rayPacket, BVHResultPacket & resultPacket, int firstActive)
+{
+	for (int iRay = firstActive; iRay < PACKETSIZE; ++iRay)
+	{
+		// Loop through the triangles
+		Triangle* triangle;
+		bool hit = false;
+		float u, v;
+		for (int i = firstLeft; i < firstLeft + count; ++i)
+		{
+			triangle = &bvh->m_Triangles[bvh->m_TriangleIdx[i]];
+			if (triangle->Intersect2(rayPacket.D[iRay], rayPacket.O[iRay], rayPacket.t[iRay], u, v))
+			{
+				resultPacket.m_Triangle[iRay] = triangle;
+				resultPacket.m_U[iRay] = u;
+				resultPacket.m_V[iRay] = v;
+			}
+		}
+	}
 }

@@ -7,7 +7,7 @@ vec3 position;
 Camera     camera;
 Raytracer  raytracer;
 Rasterizer rasterizer;
-bool       isRaytracer = false;
+bool       isRaytracer = true;
 
 // -----------------------------------------------------------
 // Initialize the game
@@ -28,7 +28,7 @@ void Game::Init()
                                              0.0f, 0.0f, 1.0f,
                                              rasterizer.scene->meshList[i]);
 
-        raytracer.m_Objects.push_back(mc);
+        //raytracer.m_Objects.push_back(mc);
     }
     position = vec3(0, 0, 0);
 	raytracer.BuildBVH(rasterizer.scene->meshList);
@@ -70,6 +70,8 @@ void Game::HandleInput( float dt )
     if (GetAsyncKeyState('P')) { raytracer.m_Lights[0]->m_Pos  -= vec3(0, dt, 0); raytracer.curLine = 0; }
     if (GetAsyncKeyState('U')) { raytracer.m_Objects[0]->m_Pos += vec3(0, dt, 0); raytracer.curLine = 0; }
     if (GetAsyncKeyState('I')) { raytracer.m_Objects[0]->m_Pos -= vec3(0, dt, 0); raytracer.curLine = 0; }
+	if (GetAsyncKeyState('T')) { raytracer.traverseDepth = !raytracer.traverseDepth; }
+	
 }
 
 // -----------------------------------------------------------

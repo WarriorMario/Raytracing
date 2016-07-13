@@ -33,7 +33,9 @@ private:
 extern "C" { unsigned int sthread_proc( void* param ); }
 
 namespace Tmpl8 {
-
+	class BVH;
+	class Camera;
+	class Raytracer;
 class Job
 {
 public:
@@ -67,6 +69,7 @@ public:
 	void RunJobs();
 	void ThreadDone( unsigned int n );
 	int MaxConcurrent() { return m_NumThreads; }
+	int numCores;
 protected:
 	friend class JobThread;
 	Job* GetNextJob();
@@ -77,6 +80,33 @@ protected:
 	HANDLE m_ThreadDone[MAXJOBTHREADS];
 	unsigned int m_NumThreads, m_JobCount;
 	JobThread* m_JobThreadList;
+};
+
+struct RenderData
+{
+	glm::vec3 p0;
+	glm::vec3 p1;
+	glm::vec3 p2;
+
+	float invHeight;
+	float invWidth;
+};
+
+class RenderJob : public Job
+{
+public:
+	static volatile long waiting;
+	static glm::ivec2 tiles[SCRWIDTH * SCRHEIGHT];
+	static RenderData renderData;
+	void Main();
+	void Init(BVH * a_bvh, Camera * camera, Surface * a_screen, Raytracer* rayt);
+	void RenderTile(int tile);
+
+protected:
+ 	BVH * bvh;
+	Camera * camera;
+	Surface * screen;
+	Raytracer * raytracer;
 };
 
 }; // namespace Tmpl8
